@@ -1,3 +1,1 @@
 # hacknation_zschie
-
-chuj
