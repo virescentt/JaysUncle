@@ -1,5 +1,15 @@
-"""PDF → Document (text layer, OCR fallback for scanned pages)."""
+"""PDF → Document and direct PDF → JSON ingest helpers."""
 
-from odwolania2json.ingest.pdf import load_document
+from odwolania2json.ingest.pdf import (
+    document_to_json,
+    load_document,
+    pdf_folder_to_json,
+    pdf_to_json,
+)
 
-__all__ = ["load_document"]
+__all__ = [
+    "document_to_json",
+    "load_document",
+    "pdf_folder_to_json",
+    "pdf_to_json",
+]
