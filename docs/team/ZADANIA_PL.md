@@ -1,6 +1,7 @@
 # Zadania dla poszczególnych osób (wariant C — hybryda)
 
 > Jeśli wybierzemy A albo B — zob. sekcję „Co się zmienia” na końcu. Warianty: [WARIANTY_PL.md](WARIANTY_PL.md) · Wersja rosyjska: [ZADANIA_RU.md](ZADANIA_RU.md)
+> **Nowy w projekcie? Zacznij od [WPROWADZENIE_PL.md](WPROWADZENIE_PL.md)** — o co chodzi w zadaniu, na przykładach.
 
 ## Start dla wszystkich (15 minut)
 
