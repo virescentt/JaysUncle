@@ -142,7 +142,9 @@ def merge(
             parent = path.rsplit(".", 1)[0] if "." in path else ""
             src_path = f"{parent}.{fspec.derived_from}" if parent else fspec.derived_from
             src_val = get(data, src_path)
-            entry = registry.dictionaries[fspec.dictionary].get(src_val) if fspec.dictionary else None
+            # a missing dictionary is a config error (Registry.check reports it): null, not a lost document
+            dictionary = registry.dictionaries.get(fspec.dictionary) if fspec.dictionary else None
+            entry = dictionary.get(src_val) if dictionary is not None else None
             val = getattr(entry, fspec.derived_attr, None) if entry else None
             set_value(data, path, val)
             src_conf = chosen[src_path].confidence if src_path in chosen else 0.0

@@ -26,7 +26,7 @@ def extract_candidates(
     candidates: list[Candidate] = []
     errors: list[str] = []
     if mode in ("rules", "hybrid"):
-        candidates += extract_rules(doc, spec)
+        candidates += extract_rules(doc, spec, registry)
     if mode in ("llm", "hybrid"):
         if llm is None:
             if mode == "llm":

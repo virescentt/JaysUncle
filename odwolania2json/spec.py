@@ -33,10 +33,12 @@ class _Strict(BaseModel):
 
 
 class Section(_Strict):
-    """Text region (regex start … regex end) in which child fields are searched by the rules extractor."""
+    """Text region (regex start … regex end) in which the field (or its children) is searched by the rules
+    extractor. The region begins right after the `start` match and ends before the first `end` match."""
 
     start: str
     end: str | None = None
+    optional: bool = False  # start not found → search the whole parent region instead of skipping the field
 
 
 class FieldSpec(_Strict):
@@ -48,13 +50,20 @@ class FieldSpec(_Strict):
     derived_from: str | None = None  # sibling field; value computed from the dictionary (not extracted)
     derived_attr: str = "opis"
 
-    # --- hints for the rules extractor ---
+    # --- hints for the rules extractor (see extract/rules.py) ---
     labels: list[str] = Field(default_factory=list)  # "Label: value" or "Label\nvalue"
     patterns: list[str] = Field(default_factory=list)  # regex; value = group "value" (or group 1)
     case_sensitive: bool = False  # patterns/labels are case-insensitive unless set
     scope: Scope = "all"
-    section: Section | None = None  # for object/array: region where children are searched
+    section: Section | None = None  # region where the field (object/array: its children) is searched
     item_split: str | None = None  # for array: regex splitting the section into items
+    item_prefer: str | None = None  # for array: items matching this regex come first (e.g. consortium leader)
+    value_pattern: str | None = None  # regex: shape of a label's value (starts with it / exactly one match in it)
+    max_lines: int = 1  # a label's value may continue over this many lines (e.g. a long transfer title)
+    stop: list[str] = Field(default_factory=list)  # regex: a continuation line starting with it ends the value
+    strategy: str | None = None  # named generic heuristic of the rules extractor (rules.STRATEGIES)
+    params: dict[str, Any] = Field(default_factory=dict)  # parameters of the strategy
+    confidence: float | None = None  # base confidence of this field's rule candidates (< 0.5 = weak guess)
 
     # --- post-processing ---
     normalize: list[str] = Field(default_factory=list)  # names from odwolania2json/normalize
@@ -259,7 +268,45 @@ class Registry(BaseModel):
                         problems.append(f"{where}: unknown validator '{v}'")
                 if spec.dictionary and spec.dictionary not in self.dictionaries:
                     problems.append(f"{where}: unknown dictionary '{spec.dictionary}'")
+            _check_rule_hints(dt, problems)
         return problems
+
+
+def _check_rule_hints(dt: DocTypeSpec, problems: list[str]) -> None:
+    """Regexes and strategy names of the rules-extractor hints, on every field (objects and arrays too).
+    Strings inside strategy `params` are regexes or plain words (which compile as regexes too). An invalid regex
+    is reported once per class (YAML aliases share one `params` between fields)."""
+    from odwolania2json.extract.rules import STRATEGIES
+
+    seen: set[str] = set()
+
+    def strings(value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [s for v in value.values() for s in strings(v)]
+        if isinstance(value, list):
+            return [s for v in value for s in strings(v)]
+        return []
+
+    def walk(spec: FieldSpec, path: str) -> None:
+        where = f"{dt.id}: {path}"
+        regexes = [*spec.stop, spec.value_pattern, spec.item_split, spec.item_prefer, *strings(spec.params)]
+        if spec.section is not None:
+            regexes += [spec.section.start, spec.section.end]
+        for p in regexes:
+            if p and p not in seen:
+                seen.add(p)
+                _check_regex(p, where, problems)
+        if spec.strategy and spec.strategy not in STRATEGIES:
+            problems.append(f"{where}: unknown strategy '{spec.strategy}' (known: {', '.join(sorted(STRATEGIES))})")
+        for k, child in (spec.properties or {}).items():
+            walk(child, join(path, k))
+        if spec.items is not None:
+            walk(spec.items, path + "[]")
+
+    for key, spec in dt.output.items():
+        walk(spec, key)
 
 
 def _check_regex(pattern: str, where: str, problems: list[str]) -> None:
