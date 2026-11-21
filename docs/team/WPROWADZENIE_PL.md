@@ -1,6 +1,7 @@
 # Wprowadzenie do projektu: nad czym pracujemy (PL)
 
 > Dla osób, które dopiero dołączają. Czytać od góry do dołu, ~15 minut. Wersja rosyjska: [WPROWADZENIE_RU.md](WPROWADZENIE_RU.md)
+>
 > Dalej: warianty rozwiązania — [WARIANTY_PL.md](WARIANTY_PL.md), kto co robi — [ZADANIA_PL.md](ZADANIA_PL.md).
 
 ---
