@@ -15,6 +15,7 @@ pytest -q                                      # всё зелёное, 43 те�
 
 **Правила:**
 - Своя ветка `feat/<имя>-<что>`, маленькие PR в `master`. Перед PR: `pytest -q`, `ruff check .`, `python -m evaluation.run_eval`. В описании PR — **F1 до → после**.
+- **В VS Code всё это одной кнопкой:** `Cmd/Ctrl+Shift+P` → `Tasks: Run Test Task` → «✅ Przed PR». Перед началом работы на свежем `master` один раз запустите `Tasks: Run Task` → «Eval: zapisz baseline». Тогда «Przed PR» сам напечатает `F1: до → после` для описания PR. Задачи работают на macOS и Windows.
 - Не трогаем чужие файлы без договорённости. Общие файлы (`spec.py`, `models.py`, `pipeline.py`) меняем только через меня.
 - **Работа с веб-LLM:** вставляете в чат (1) свой файл целиком, (2) тесты к нему, (3) нужный YAML из `config/doc_types/`, (4) фразу «реализуй TODO, не меняй сигнатуры функций». Результат → `pytest` → PR.
 - Отладка: `python -m odwolania2json inspect файл.pdf` (текст страниц), `... classify файл.pdf` (баллы классов). Ошибки по полям — в `runs/<время>/report.json` → раздел `errors`.

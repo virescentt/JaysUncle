@@ -23,6 +23,8 @@ from odwolania2json.output import output_path_for, write_json
 from odwolania2json.pipeline import Pipeline, find_pdfs
 from odwolania2json.settings import Settings
 
+BASELINE = Path("runs/baseline_report.json")
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Pipeline on the training set + F1")
@@ -36,6 +38,9 @@ def main() -> None:
     ap.add_argument("--no-run", action="store_true", help="only score an existing --out")
     ap.add_argument("--lenient", action="store_true")
     ap.add_argument("--fuzzy", type=float, default=None)
+    ap.add_argument(
+        "--save-baseline", action="store_true", help=f"save this result as the reference ({BASELINE}) — run on master"
+    )
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -77,6 +82,29 @@ def main() -> None:
         json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(f"Raport: {out / 'report.json'}")
+    compare_with_baseline(rep, save=args.save_baseline)
+
+
+def compare_with_baseline(rep: dict, save: bool = False) -> None:
+    """Print 'F1 before → after' (for the PR description) against runs/baseline_report.json."""
+    f1 = rep["total"]["f1"]
+    if save:
+        BASELINE.write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Zapisano baseline: F1 = {f1:.4f} → {BASELINE}")
+        return
+    if not BASELINE.exists():
+        print("Brak baseline — na master uruchom: python -m evaluation.run_eval --save-baseline")
+        return
+    base = json.loads(BASELINE.read_text(encoding="utf-8"))
+    b = base["total"]["f1"]
+    print(f"\nF1: {b:.4f} → {f1:.4f}  (Δ {f1 - b:+.4f})   ← wklej do opisu PR")
+    changed = []
+    for key, v in rep["by_field"].items():
+        old = base["by_field"].get(key, {}).get("f1")
+        if old is not None and abs(v["f1"] - old) >= 0.005:
+            changed.append((v["f1"] - old, key, old, v["f1"]))
+    for delta, key, old, new in sorted(changed, reverse=True)[:10]:
+        print(f"   {key}: {old:.3f} → {new:.3f} ({delta:+.3f})")
 
 
 if __name__ == "__main__":

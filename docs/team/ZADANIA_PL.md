@@ -15,6 +15,7 @@ pytest -q                                      # wszystko zielone; 43 testy "ski
 
 **Zasady:**
 - Własna gałąź `feat/<imię>-<co>`, małe PR-y do `master`. Przed PR: `pytest -q`, `ruff check .`, `python -m evaluation.run_eval`. W opisie PR — **F1 przed → po**.
+- **W VS Code wszystko jednym przyciskiem:** `Cmd/Ctrl+Shift+P` → `Tasks: Run Test Task` → „✅ Przed PR”. Przed rozpoczęciem pracy, na świeżym `master`, uruchomcie raz `Tasks: Run Task` → „Eval: zapisz baseline”. Wtedy „Przed PR” sam wypisze `F1: przed → po` do opisu PR. Zadania działają na macOS i Windows.
 - Nie ruszamy cudzych plików bez uzgodnienia. Wspólne pliki (`spec.py`, `models.py`, `pipeline.py`) zmieniamy tylko przeze mnie.
 - **Praca z webowym LLM:** wklejacie do czatu (1) cały swój plik, (2) testy do niego, (3) odpowiedni YAML z `config/doc_types/`, (4) zdanie „zaimplementuj TODO, nie zmieniaj sygnatur funkcji”. Wynik → `pytest` → PR.
 - Debugowanie: `python -m odwolania2json inspect plik.pdf` (tekst stron), `... classify plik.pdf` (punkty klas). Błędy według pól — w `runs/<czas>/report.json`, sekcja `errors`.
