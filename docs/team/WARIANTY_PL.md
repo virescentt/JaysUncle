@@ -10,7 +10,7 @@ Organizator uzupełnił README i dane. Co się zmieniło:
 2. **Finał (50% „elastyczność”) liczony teraz tak:** 1–20 pkt za wielkość modelu — **im mniejszy model, tym więcej punktów**; 1–20 — łatwość dodawania nowych typów dokumentów; 1–10 — dodatkowe funkcje (np. GUI). → Hybryda z naciskiem na reguły i mały model to dokładnie to, czego chcą.
 3. **GUI** oficjalnie daje punkty, ale nie jest wymagane: ważniejsza jest skuteczność ekstrakcji.
 4. **Dokumenty negatywne → pusty plik `.json`**, a nie brak pliku. Już zrobione. Doszedł folder `dane/negatywne/` (12 PDF: orzeczenia KIO, ogłoszenia TED/BZP, broszury); takie pliki są też w niektórych sprawach.
-5. **Prawdziwe skany z wzorcami:** `dane/skany/` — 30 sztuk (10 odwołań, 10 pełnomocnictw, 10 przelewów). To teraz główny pomiar OCR: `python -m evaluation.run_eval --subset scans`.
+5. **Skany organizatora z wzorcami:** `dane/skany/` — 30 sztuk (10 odwołań, 10 pełnomocnictw, 10 przelewów). To teraz główny pomiar OCR: `python -m evaluation.run_eval --subset scans`.
 6. **Kategoria 12** = „Projektowane postanowienia umowy”. Dodana do słownika.
 7. W dokumentacji potrzebny jest **opis wykorzystanego LLM**.
 8. Na maszynie jury najpewniej **nie będzie Tesseracta** → OCR musi działać z pip (RapidOCR / EasyOCR) albo przez API.
@@ -61,7 +61,7 @@ Organizator uzupełnił README i dane. Co się zmieniło:
 - Normalizacja: daty ISO, BZP bez spacji (`2026/BZP00999263`), rachunki — same 26 cyfr, kwota jako liczba.
 
 ### Pułapki
-- **Sumy kontrolne w syntetyku często się nie zgadzają**: NIP jest poprawny w 115 na 189 przypadków, REGON w 85 na 123, IBAN w 43 na 120. Nie wolno odrzucać wartości po sumie kontrolnej, to tylko miękki sygnał. Na prawdziwych skanach się przyda: pomaga poprawiać błędy OCR.
+- **Sumy kontrolne w syntetyku często się nie zgadzają**: NIP jest poprawny w 115 na 189 przypadków, REGON w 85 na 123, IBAN w 43 na 120. Nie wolno odrzucać wartości po sumie kontrolnej, to tylko miękki sygnał. Na skanach organizatora się przyda: pomaga poprawiać błędy OCR.
 - **F1 liczone po polach**: błędna wartość daje FP + FN, a null tylko FN. Przy niepewności bardziej opłaca się zwrócić null. Halucynacje LLM bezpośrednio obniżają precyzję.
 - **OCR**: sprawdziliśmy RapidOCR (instalacja przez pip). Skan czyta, ale gubi polskie znaki („Odwolujacy”, „Spóka”), a to szkodzi dokładnemu dopasowaniu nazw. Dlatego głównym silnikiem jest **Tesseract z modelem `pol`**, plus korekta błędów przez LLM; RapidOCR zostaje jako zapasowy.
 - Spójność między dokumentami sprawy (NIP w odwołaniu = NIP w pełnomocnictwie) służy tylko do **weryfikacji**, nie do uzupełniania. W referencji każdego JSON-a jest tylko to, co jest w *tym* dokumencie.

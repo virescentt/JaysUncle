@@ -28,7 +28,7 @@ Pomiar z 21.11.2026 w trybie reguł (bez LLM), metryka F1 po polach ([`evaluatio
 
 | Zbiór | Dokumenty | F1 | Klasyfikacja |
 |---|---|---|---|
-| Prawdziwe skany organizatora (OCR) | 30 | **0.969** (P 0.971, R 0.968) | 30/30 |
+| Skany organizatora organizatora (OCR) | 30 | **0.969** (P 0.971, R 0.968) | 30/30 |
 | Sprawy syntetyczne organizatora | 180 (60 spraw) | **1.000** | 180/180 |
 | Dokumenty negatywne (→ pusty `.json`) | 16 | 0 FP | 16/16 |
 
@@ -152,11 +152,11 @@ Przydatne komendy (`python -m odwolania2json …`):
 ```bash
 python scripts/fetch_data.py --sample-input 3   # dane UZP → data/uzp/ (+ 3 sprawy do input/)
 python -m evaluation.run_eval                    # 60 spraw syntetycznych + dokumenty negatywne (~20 s)
-python -m evaluation.run_eval --subset scans     # 30 prawdziwych skanów organizatora (OCR, kilka minut)
+python -m evaluation.run_eval --subset scans     # 30 skanów organizatora organizatora (OCR, kilka minut)
 python -m evaluation.run_eval --subset negatives # dokumenty negatywne z dane/negatywne
 python -m evaluation.run_eval --mode rules --limit 10
 python scripts/make_scans.py && python -m evaluation.run_eval --data data/scans/dane   # syntetyczne skany
-python scripts/ocr_benchmark.py                  # porównanie konfiguracji OCR na prawdziwych skanach
+python scripts/ocr_benchmark.py                  # porównanie konfiguracji OCR na skanach organizatora
 ```
 
 Raport: `runs/<czas>/report.json` (F1 ogółem, wg typu dokumentu, wg pola, przykłady błędów). Metryka: porównanie każdego pola z referencją — trafienie TP, brak FN, nadmiarowa/błędna wartość FP. Opis metryki i wyniki: [docs/RAPORT_JAKOSCI.md](docs/RAPORT_JAKOSCI.md).

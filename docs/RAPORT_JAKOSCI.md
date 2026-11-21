@@ -8,7 +8,7 @@ Pomiar z 21.11.2026, tryb `rules` (same reguły, bez LLM). Wyniki z LLM (tryb `h
 |---|---|---|---|---|---|---|---|
 | Sprawy syntetyczne organizatora (60 spraw) | 180 PDF | **1.000** | 1.000 | 1.000 | 2032 | 0 | 0 |
 | Dokumenty negatywne | 16 PDF | — | — | — | — | 0 | — |
-| **Prawdziwe skany organizatora** (bez warstwy tekstowej, OCR) | 30 PDF | **0.969** | 0.971 | 0.968 | 299 | 9 | 10 |
+| **Skany organizatora organizatora** (bez warstwy tekstowej, OCR) | 30 PDF | **0.969** | 0.971 | 0.968 | 299 | 9 | 10 |
 
 - Wszystkie 16 dokumentów negatywnych (ogłoszenia TED/BZP, decyzje, wyrok KIO, broszura itp.) dostają pusty plik `.json` (0 bajtów), zgodnie z README organizatora.
 - Klasyfikacja: sprawy syntetyczne **180/180**, skany **30/30**, dokumenty negatywne **16/16** (żaden nie został przypisany do klasy).
@@ -35,11 +35,11 @@ Dane organizatora pobiera `python scripts/fetch_data.py` (do `data/uzp/`).
 |---|---|---|
 | Sprawy syntetyczne | `data/uzp/dane/przyklad_01 … przyklad_60` | 60 spraw: odwołanie, pełnomocnictwo, potwierdzenie przelewu + referencyjne JSON-y (180) |
 | Negatywne | `data/uzp/dane/negatywne` + foldery spraw | 12 PDF w `negatywne` i 4 dodatkowe PDF w folderach spraw (np. ogłoszenie TED) |
-| Prawdziwe skany | `data/uzp/dane/skany/{odwolania,pelnomocnictwa,potwierdzenia}` | 10 odwołań, 10 pełnomocnictw, 10 potwierdzeń przelewu; skany bez warstwy tekstowej + referencyjne JSON-y |
+| Skany organizatora | `data/uzp/dane/skany/{odwolania,pelnomocnictwa,potwierdzenia}` | 10 odwołań, 10 pełnomocnictw, 10 potwierdzeń przelewu; skany bez warstwy tekstowej + referencyjne JSON-y |
 
 ## Wyniki według typu dokumentu
 
-**Prawdziwe skany (30 PDF, OCR):**
+**Skany organizatora (30 PDF, OCR):**
 
 | Typ | F1 | Precyzja | Pełność | TP | FP | FN |
 |---|---|---|---|---|---|---|
@@ -65,7 +65,7 @@ Na danych syntetycznych błędów nie ma, więc ewentualny spadek F1 na zbiorze 
 
 ## Tryb reguł a hybryda z LLM
 
-Ten sam zbiór 30 prawdziwych skanów, ta sama metryka:
+Ten sam zbiór 30 skanów organizatora, ta sama metryka:
 
 | Konfiguracja | F1 | Uwagi |
 |---|---|---|
@@ -96,7 +96,7 @@ Ustawienia domyślnej konfiguracji są w [`config/settings.yaml`](../config/sett
 ```bash
 python scripts/fetch_data.py                                    # dane UZP → data/uzp/
 python -m evaluation.run_eval --mode rules                      # --subset fast (domyślnie): 60 spraw syntetycznych + negatywne
-python -m evaluation.run_eval --mode rules --subset scans       # 30 prawdziwych skanów (OCR: pierwszy przebieg kilka minut, potem cache)
+python -m evaluation.run_eval --mode rules --subset scans       # 30 skanów organizatora (OCR: pierwszy przebieg kilka minut, potem cache)
 python -m evaluation.run_eval --mode rules --subset negatives   # tylko folder dane/negatywne (12 PDF)
 python scripts/ocr_benchmark.py                                 # benchmark OCR, ustawienia domyślne
 python scripts/ocr_benchmark.py --list                          # dostępne konfiguracje do porównania (--config …)

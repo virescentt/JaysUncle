@@ -8,7 +8,7 @@
 
 Szczegóły — na początku [WARIANTY_PL.md](WARIANTY_PL.md).
 - **Polina:** dostawca LLM z serwerami w UE/EOG i **mały** model open-source (mniejszy model → więcej punktów w finale); bezpieczne przekazanie klucza API jury; **równoległe przetwarzanie plików** (teraz idą po kolei).
-- **Sewa:** jury nie będzie miało Tesseracta → porównać na prawdziwych skanach (`--subset scans`) OCR instalowane przez pip: RapidOCR i EasyOCR. Cache OCR jest teraz ważniejszy: przebieg skanów trwa minuty. Syntetyczne skany są drugorzędne — mamy prawdziwe.
+- **Sewa:** jury nie będzie miało Tesseracta → porównać na skanach organizatora (`--subset scans`) OCR instalowane przez pip: RapidOCR i EasyOCR. Cache OCR jest teraz ważniejszy: przebieg skanów trwa minuty. Syntetyczne skany są drugorzędne — mamy prawdziwe.
 - **Lesza:** klasyfikator nie może przyjmować dokumentów negatywnych (`--subset negatives`, teraz 12 na 12 poprawnie — utrzymać).
 - **Artem:** GUI oficjalnie daje do 10 pkt w finale, ale nadal po normalizatorach.
 
@@ -45,7 +45,7 @@ pytest -q                                      # wszystko zielone; 43 testy "ski
 
 ## Sewa — PDF, OCR, skany, Docker
 
-1. Zainstalować Tesseract (`brew install tesseract tesseract-lang`) i sprawdzić na prawdziwym skanie: `python -m odwolania2json inspect "input/szablon_case1/przyklad odwolanie.pdf"`. Porównać z RapidOCR (`OCR_ENGINE=rapidocr`).
+1. Zainstalować Tesseract (`brew install tesseract tesseract-lang`) i sprawdzić na skanie organizatora: `python -m odwolania2json inspect "input/szablon_case1/przyklad odwolanie.pdf"`. Porównać z RapidOCR (`OCR_ENGINE=rapidocr`).
 2. `odwolania2json/ingest/ocr.py`: wstępne przetwarzanie obrazu (prostowanie, binaryzacja), **słowa ze współrzędnymi z OCR** → `Page.words` (potrzebne do podświetlania w panelu), pewność OCR dla strony.
 3. `odwolania2json/ingest/pdf.py`: łączenie przeniesień („postępo-\nwania”), artefakty justowania, „śmieciowa” warstwa tekstowa → OCR.
 4. `scripts/make_scans.py`: funkcja `degrade()` (obrót ±1.5°, szum, rozmycie, JPEG, szare tło, czarne zamazania jak w zanonimizowanym przykładzie) → `python -m evaluation.run_eval --data data/scans/dane`. **To nasz pomiar jakości na „prawdziwych” dokumentach.**
