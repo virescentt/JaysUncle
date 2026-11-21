@@ -1,10 +1,8 @@
 # Odwołania2JSON
 
-**Od dokumentów do danych.** Automatyczna zamiana dokumentów postępowania odwoławczego przed KIO
-(odwołanie, pełnomocnictwo, potwierdzenie przelewu — PDF, także skany) na kanoniczny model JSON.
+**Od dokumentów do danych.** Automatyczna zamiana dokumentów postępowania odwoławczego przed KIO (odwołanie, pełnomocnictwo, potwierdzenie przelewu — PDF, także skany) na kanoniczny model JSON.
 
-Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026
-([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
+Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
 
 > Status: **w budowie** (szkielet architektury gotowy, moduły w trakcie implementacji).
 
@@ -13,12 +11,9 @@ Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026
 ## Co robi
 
 1. Przyjmuje PDF-y z folderu `input/` (podfoldery = sprawy) — z warstwą tekstową albo skany (OCR).
-2. **Rozpoznaje rodzaj dokumentu** (odwołanie / pełnomocnictwo / przelew; inne dokumenty, np. ogłoszenie TED,
-   są pomijane).
-3. **Wyodrębnia dane** właściwe dla danej klasy (strony postępowania, numery KRS/NIP/REGON, BZP/TED,
-   czynność zaskarżona w pierwszym zarzucie, dane przelewu…).
-4. Zapisuje JSON zgodny z [oczekiwanym modelem](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/tree/main/oczekiwane-json)
-   do `output/` — **ta sama nazwa i struktura katalogów co w `input/`**.
+2. **Rozpoznaje rodzaj dokumentu** (odwołanie / pełnomocnictwo / przelew; inne dokumenty, np. ogłoszenie TED, są pomijane).
+3. **Wyodrębnia dane** właściwe dla danej klasy (strony postępowania, numery KRS/NIP/REGON, BZP/TED, czynność zaskarżona w pierwszym zarzucie, dane przelewu…).
+4. Zapisuje JSON zgodny z [oczekiwanym modelem](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/tree/main/oczekiwane-json) do `output/` — **ta sama nazwa i struktura katalogów co w `input/`**.
 5. Dla każdej wartości zapisuje **ślad** (`traces/`): strona, fragment tekstu, metoda, pewność — przejrzystość ekstrakcji.
 
 ```
@@ -37,20 +32,15 @@ PDF ─► INGEST (pdfplumber; skan → OCR Tesseract/RapidOCR)
     ─► NORMALIZE (daty ISO, kwoty, numery, słowniki) ─► output/*.json + traces/*.trace.json
 ```
 
-- **Klasa dokumentu = jeden plik YAML** w `config/doc_types/` (sygnały rozpoznawania, struktura wyniku, opisy pól,
-  wskazówki ekstrakcji, normalizacja). **Nowa klasa nie wymaga zmian w kodzie** —
-  zob. [docs/NOWA_KLASA_DOKUMENTU.md](docs/NOWA_KLASA_DOKUMENTU.md).
-- Tryby ekstrakcji (`config/settings.yaml` lub `EXTRACTION_MODE` w `.env`):
-  `rules` (bez LLM, offline) · `llm` · `hybrid` (domyślny).
-- LLM: **wyłącznie modele open-source** przez API zgodne z OpenAI (Ollama, vLLM, llama.cpp lub hostowane
-  modele z otwartymi wagami). Bez GPU po stronie aplikacji.
+- **Klasa dokumentu = jeden plik YAML** w `config/doc_types/` (sygnały rozpoznawania, struktura wyniku, opisy pól, wskazówki ekstrakcji, normalizacja). **Nowa klasa nie wymaga zmian w kodzie** — zob. [docs/NOWA_KLASA_DOKUMENTU.md](docs/NOWA_KLASA_DOKUMENTU.md).
+- Tryby ekstrakcji (`config/settings.yaml` lub `EXTRACTION_MODE` w `.env`): `rules` (bez LLM, offline) · `llm` · `hybrid` (domyślny).
+- LLM: **wyłącznie modele open-source** przez API zgodne z OpenAI (Ollama, vLLM, llama.cpp lub hostowane modele z otwartymi wagami). Bez GPU po stronie aplikacji.
 - Wszystkie zależności open source o licencjach permisywnych (MIT / BSD / Apache-2.0).
 
 ## Wymagania
 
 - **Python 3.13+**
-- (zalecane) **Tesseract OCR z językiem polskim** — dla skanów. Bez niego działa zapasowy RapidOCR
-  (instalowany przez pip; gorzej radzi sobie z polskimi znakami).
+- (zalecane) **Tesseract OCR z językiem polskim** — dla skanów. Bez niego działa zapasowy RapidOCR (instalowany przez pip; gorzej radzi sobie z polskimi znakami).
   - macOS: `brew install tesseract tesseract-lang`
   - Ubuntu/Debian: `sudo apt install tesseract-ocr tesseract-ocr-pol`
   - Windows: [instalator UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) (zaznacz język *Polish*)
@@ -124,8 +114,7 @@ python -m evaluation.run_eval --mode rules --limit 10
 python scripts/make_scans.py && python -m evaluation.run_eval --data data/scans/dane   # syntetyczne skany
 ```
 
-Raport: `runs/<czas>/report.json` (F1 ogółem, wg typu dokumentu, wg pola, przykłady błędów).
-Metryka: porównanie każdego pola z referencją — trafienie TP, brak FN, nadmiarowa/błędna wartość FP.
+Raport: `runs/<czas>/report.json` (F1 ogółem, wg typu dokumentu, wg pola, przykłady błędów). Metryka: porównanie każdego pola z referencją — trafienie TP, brak FN, nadmiarowa/błędna wartość FP.
 
 ## Struktura repozytorium
 

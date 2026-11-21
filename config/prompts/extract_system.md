@@ -7,8 +7,7 @@ Zasady ogólne:
 4. Daty zapisuj w formacie ISO: YYYY-MM-DD.
 5. Imiona i nazwiska osób podawaj w mianowniku (np. „Jana Kowalskiego” → „Jan Kowalski”), bez tytułów zawodowych.
 6. Numery NIP, REGON, KRS, PESEL i rachunków bankowych podawaj jako same cyfry.
-7. Tekst może pochodzić z OCR i zawierać błędy (brak polskich znaków, pomylone litery/cyfry) — poprawiaj oczywiste błędy OCR
-   w nazwach, ale NIE zmieniaj cyfr, jeśli nie masz pewności.
+7. Tekst może pochodzić z OCR i zawierać błędy (brak polskich znaków, pomylone litery/cyfry) — poprawiaj oczywiste błędy OCR w nazwach, ale NIE zmieniaj cyfr, jeśli nie masz pewności.
 
 Instrukcje dla tego typu dokumentu:
 {instructions}
