@@ -24,7 +24,115 @@ from odwolania2json.spec import DocTypeSpec, FieldSpec, Section
 CONF_PATTERN = 0.8
 CONF_LABEL = 0.7
 MAX_VALUE_LINES = 5
-_UNITS = {"pln", "zl", "eur", "usd", "gbp", "chf"}
+
+_CUR = r"(?:PLN|zl|EUR|USD)"  # matched on diacritic-folded text ("zł" → "zl")
+_SHAPES = {
+    "account": r"(?<!\d)(?:PL\s?)?\d{2}(?:\s?\d{4}){6}(?!\d)",
+    "date": r"(?<!\d)(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-z]+\s+\d{4})",
+    "amount": r"(?<![\d.,])(?:\d{1,3}(?:[ \u00a0]\d{3})+|\d+)(?:[.,]\d{2}\s?" + _CUR + r"?|\s?" + _CUR + r")",
+}
+_SHAPE_RE = {k: re.compile(v, re.IGNORECASE) for k, v in _SHAPES.items()}
+_SHAPE_BY_NORMALIZER = {"account_number": "account", "date_pl": "date", "amount_pl": "amount"}
+_SHAPE_BY_TYPE = {"date": "date", "number": "amount"}
+_FILLER = {"", "nr", "numer", "no"}  # allowed between a mid-sentence label and its value
+_OPEN_Q, _CLOSE_Q = "„“\"«", "”“\"»"
+_LEADER = " \t.:_-"  # separators between a label and its value ("Label ..... value")
+
+
+def _shape(field: FieldSpec) -> re.Pattern | None:
+    for n in field.normalize:
+        if n in _SHAPE_BY_NORMALIZER:
+            return _SHAPE_RE[_SHAPE_BY_NORMALIZER[n]]
+    k = _SHAPE_BY_TYPE.get(field.type)
+    return _SHAPE_RE[k] if k else None
+
+
+def _shaped(shape, m, le, text, folded, all_re):
+    """Typed value near the label: same line (after leaders / 'nr') or up to 2 lines below."""
+    for s in shape.finditer(folded, m.end(), min(len(folded), m.end() + 160)):
+        if folded.count("\n", m.end(), s.start()) > 2:
+            return None
+        for lab in all_re.finditer(folded, m.end(), s.start()):
+            if not (lab.start() < le < s.start()):  # only a header row ("Kwota Data" / values below) is OK
+                return None
+        if s.start() <= le:  # same line as the label → only filler words in between
+            gap = re.sub(r"[\s:.\-_]+", "", all_re.sub("", folded[m.end() : s.start()])).lower()
+            if gap not in _FILLER:
+                return None
+        return text[s.start() : s.end()].strip(), s.start(), s.end()
+    return None
+
+
+def _open_quote(s: str) -> bool:
+    s = s.lstrip()
+    return bool(s) and s[0] in _OPEN_Q and not any(c in s[1:] for c in _CLOSE_Q)
+
+
+def _clean(value: str) -> str:
+    v = value.strip()
+    if v and v[0] in _OPEN_Q:  # „value” → value (cut at the last closing quote)
+        idx = max((v.rfind(c) for c in _CLOSE_Q), default=-1)
+        v = v[1:idx] if idx > 0 else v[1:]
+    if v and " " not in v and "\n" not in v and len(v) > 1 and v[-1] in ".,;" and v[-2].isdigit():
+        v = v[:-1]  # "CEN2611091860728." → "CEN2611091860728"; "S.A." and "ZP.431.2026" stay intact
+    return v.strip()
+
+
+def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -> tuple[str, int, int] | None:
+    """Value for `field` via its labels → (value, start, end) in `text`.
+
+    Typed fields (date / amount / account, inferred from normalizer or type): shape search near the label.
+    Other fields: "Label: value", "Label ..... value", "Label value" (label at line start),
+    or the line(s) below; multi-line only with `collapse_whitespace`, continuing while the next line
+    starts lowercase or a quote is still open. Stops at the next known label or a blank line.
+    """
+    own = _compile_labels(field.labels, field.case_sensitive)
+    if own is None:
+        return None
+    shape = _shape(field)
+    multiline = "collapse_whitespace" in field.normalize
+
+    for m in own.finditer(folded):
+        ls, le = _line_bounds(folded, m.start())
+        if shape is not None:
+            hit = _shaped(shape, m, le, text, folded, all_re)
+            if hit:
+                return hit
+            continue
+
+        before, after = folded[ls : m.start()], folded[m.end() : le]
+        if before.strip() and (len(before.split()) > 3 or re.search(r"[\d:;,]", before)):
+            continue
+        rest = after.lstrip(_LEADER)
+        residual = all_re.sub("", rest).strip(_LEADER)
+        lines: list[tuple[int, int]] = []
+        if residual:
+            if all_re.search(rest) or (before.strip() and not after.lstrip().startswith(":")):
+                continue  # mixed header row, or the label sits inside a sentence → not a field label
+            lines.append((m.end() + len(after) - len(rest), le))
+        pos = (lines[-1][1] if lines else le) + 1
+        limit = MAX_VALUE_LINES if multiline else 1
+        while pos < len(folded) and len(lines) < limit:
+            e = folded.find("\n", pos)
+            e = len(folded) if e == -1 else e
+            raw = folded[pos:e]
+            if not raw.strip():
+                if lines:
+                    break
+            elif all_re.search(raw):
+                break
+            else:
+                so_far = folded[lines[0][0] : lines[-1][1]] if lines else ""
+                if lines and not (raw.lstrip()[0].islower() or _open_quote(so_far)):
+                    break
+                lines.append((pos, e))
+            pos = e + 1
+        if lines:
+            a, b = lines[0][0], lines[-1][1]
+            value = _clean(text[a:b])
+            if value:
+                return value, a, b
+    return None
 
 
 @dataclass
@@ -69,73 +177,6 @@ def _line_bounds(text: str, pos: int) -> tuple[int, int]:
     start = text.rfind("\n", 0, pos) + 1
     end = text.find("\n", pos)
     return start, len(text) if end == -1 else end
-
-
-def _glue_units(tokens: list[str]) -> list[str]:
-    out: list[str] = []
-    for t in tokens:
-        if out and fold_diacritics(t).lower().rstrip(".") in _UNITS:
-            out[-1] += " " + t
-        else:
-            out.append(t)
-    return out
-
-
-def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -> tuple[str, int, int] | None:
-    """Value for `field` located via its labels → (value, start, end) in `text`. See layouts in the docstring of
-    the previous version: "Label: value", "Label" + next line(s), header row with several labels."""
-    own = _compile_labels(field.labels, field.case_sensitive)
-    if own is None:
-        return None
-    multiline = "collapse_whitespace" in field.normalize
-
-    for m in own.finditer(folded):
-        ls, le = _line_bounds(folded, m.start())
-        before, after = folded[ls : m.start()], folded[m.end() : le]
-        if before.strip() and (len(before.split()) > 3 or re.search(r"[\d:;,]", before)):
-            continue
-        stripped = after.lstrip()
-        if stripped.startswith(":"):
-            vs = m.end() + (len(after) - len(stripped)) + 1
-            value = text[vs:le].strip()
-            if value:
-                return value, vs, le
-        elif all_re.sub("", after).strip(" \t:"):
-            continue
-
-        collected: list[tuple[int, int]] = []
-        pos, limit = le + 1, (MAX_VALUE_LINES if multiline else 1)
-        while pos < len(folded) and len(collected) < limit:
-            e = folded.find("\n", pos)
-            e = len(folded) if e == -1 else e
-            line = folded[pos:e]
-            if line.strip():
-                if all_re.search(line):
-                    break
-                collected.append((pos, e))
-            elif collected:
-                break
-            pos = e + 1
-        if not collected:
-            continue
-
-        row = list(all_re.finditer(folded, ls, le))
-        if len(row) > 1:
-            s, e = collected[0]
-            tokens = _glue_units(text[s:e].split())
-            idx = next((i for i, h in enumerate(row) if h.start() == m.start()), None)
-            if idx is None or len(tokens) != len(row):
-                continue
-            value = tokens[idx]
-            vs = text.find(value, s, e)
-            vs = s if vs == -1 else vs
-            return value, vs, vs + len(value)
-
-        vs, ve = collected[0][0], collected[-1][1]
-        value = text[vs:ve].strip()
-        if value:
-            return value, vs, ve
-    return None
 
 
 # ----------------------------------------------------------------------------- regions
@@ -202,7 +243,7 @@ def _walk(field: FieldSpec, cpath: str, lo: int, hi: int, ctx: _Ctx, out: list[C
         if reg is None:
             return
         for i, (a, b) in enumerate(_items(field, ctx.full_f, *reg)):
-            _walk(field.items, f"{cpath}[{i}]", a, b, ctx, out)
+            _walk(field.items, f"{cpath}[{i}]", a, b, ctx, out) # type: ignore
     else:
         _leaf(field, cpath, lo, hi, ctx, out)
 
