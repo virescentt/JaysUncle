@@ -35,7 +35,10 @@ class Pipeline:
         self.settings = settings or Settings.load()
         self.registry = registry or load_registry(self.settings.config_dir)
         self.llm = None
-        if self.settings.extraction.mode != "rules":  # rules = fully offline, no LLM at all
+        needs_llm = self.settings.extraction.mode != "rules" or any(
+            dt.extraction.mode in ("llm", "hybrid") for dt in self.registry.doc_types.values()
+        )
+        if needs_llm:  # rules everywhere = fully offline, no LLM at all
             self.llm = LLMClient.from_settings(self.settings.llm)
 
     def process_file(self, pdf: Path) -> DocumentResult:

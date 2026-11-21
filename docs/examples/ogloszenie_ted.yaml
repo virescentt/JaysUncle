@@ -10,6 +10,9 @@ classification:
     - { pattern: 'ogłoszenie o zamówieniu', weight: 2 }
     - { pattern: 'oficjalna nazwa', weight: 2 }
     - { pattern: '\d{5,6}-\d{4} - ', weight: 2, scope: head }
+extraction:
+  mode: hybrid   # wzorce dają wartości, LLM uzupełnia resztę; klasa bez wzorców: mode: llm (wystarczą opisy pól)
+
 output:
   ogloszenie:
     type: object

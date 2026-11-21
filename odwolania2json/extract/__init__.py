@@ -22,7 +22,7 @@ def extract_candidates(
     doc: Document, spec: DocTypeSpec, registry: Registry, settings: Settings, llm=None
 ) -> tuple[list[Candidate], list[str]]:
     """Returns (candidates, errors)."""
-    mode = settings.extraction.mode
+    mode = spec.extraction.mode or settings.extraction.mode
     candidates: list[Candidate] = []
     errors: list[str] = []
     if mode in ("rules", "hybrid"):

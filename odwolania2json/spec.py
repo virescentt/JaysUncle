@@ -104,6 +104,9 @@ class ClassificationSpec(_Strict):
 
 
 class ExtractionSpec(_Strict):
+    # per-class extraction mode; None = global setting (settings.yaml / EXTRACTION_MODE).
+    # A new class with only field descriptions works with mode: llm — no regex needed.
+    mode: Literal["rules", "llm", "hybrid"] | None = None
     instructions: str = ""
     max_pages: int | None = None  # pages passed to the LLM in full
     keyword_windows: list[str] = Field(default_factory=list)  # extra snippets from later pages
