@@ -116,12 +116,13 @@ class LLMClient:
 
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         last_error: Exception | None = None
+        budget = self.settings.max_tokens
         for _attempt in range(self.settings.max_retries + 1):
             kwargs: dict[str, Any] = {
                 "model": self.settings.model,
                 "messages": messages,
                 "temperature": self.settings.temperature,
-                "max_tokens": self.settings.max_tokens,
+                "max_tokens": budget,
             }
             if self.settings.extra_body:
                 kwargs["extra_body"] = self.settings.extra_body
@@ -145,6 +146,11 @@ class LLMClient:
                     continue
                 raise LLMError(f"LLM request failed: {e}") from e
             content = resp.choices[0].message.content or ""
+            if not content.strip():
+                # reasoning models (Olala, Qwen3.x on OVHcloud) may spend the budget "thinking" → retry, more tokens
+                last_error = LLMError(f"empty answer (token budget {budget} used up by reasoning?)")
+                budget = min(budget * 2, 16000)
+                continue
             try:
                 data = parse_json(content)
             except Exception as e:  # noqa: BLE001

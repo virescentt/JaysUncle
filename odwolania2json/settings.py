@@ -64,6 +64,8 @@ class ClassificationSettings(BaseModel):
 
 class ExtractionSettings(BaseModel):
     mode: Literal["rules", "llm", "hybrid"] = "hybrid"
+    # hybrid: fill_missing = the LLM only fills fields the rules left empty; compete = best confidence wins
+    llm_policy: Literal["fill_missing", "compete"] = "fill_missing"
     min_confidence: float = 0.5
     method_priority: list[str] = Field(default_factory=lambda: ["rules", "llm", "derived"])
 

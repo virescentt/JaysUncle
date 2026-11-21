@@ -91,9 +91,7 @@ def merge(
         if generic(c.path) in leaf_specs:
             by_path[c.path].append(c)
 
-    chosen: dict[str, FieldResult] = {}
-    for path, cands in by_path.items():
-        fspec = leaf_specs[generic(path)]
+    def select(path: str, cands: list[Candidate], fspec: FieldSpec) -> FieldResult:
         issues: list[str] = []
         scored: list[tuple[float, int, Candidate, object]] = []
         for c in cands:
@@ -106,8 +104,7 @@ def merge(
             method_rank = _rank(c.method, settings.method_priority)
             scored.append((conf, -method_rank, c, raw))
         if not scored:
-            chosen[path] = FieldResult(path, None, candidates=cands, issues=issues)
-            continue
+            return FieldResult(path, None, candidates=cands, issues=issues)
         # agreement bonus: several distinct methods produced the same normalized value
         values = defaultdict(set)
         for _, _, c, _ in scored:
@@ -120,7 +117,7 @@ def merge(
         keep = conf >= settings.min_confidence
         if not keep:
             issues.append(f"best confidence {conf:.2f} < {settings.min_confidence} → null")
-        chosen[path] = FieldResult(
+        return FieldResult(
             path=path,
             value=best.value if keep else None,
             raw_value=raw,
@@ -130,6 +127,23 @@ def merge(
             candidates=cands,
             issues=issues,
         )
+
+    chosen: dict[str, FieldResult] = {}
+    for path, cands in by_path.items():
+        fspec = leaf_specs[generic(path)]
+        if settings.llm_policy != "fill_missing":
+            chosen[path] = select(path, cands, fspec)
+            continue
+        # fill_missing: rules decide; the LLM only fills fields the rules left empty (never overrides them)
+        primary = [c for c in cands if not c.method.startswith("llm")]
+        secondary = [c for c in cands if c.method.startswith("llm")]
+        fr = select(path, primary, fspec) if primary else None
+        if (fr is None or fr.value is None) and secondary:
+            fr_llm = select(path, secondary, fspec)
+            fr_llm.issues = (fr.issues if fr else []) + fr_llm.issues
+            fr = fr_llm
+        fr.candidates = cands
+        chosen[path] = fr
 
     values = {p: fr.value for p, fr in chosen.items() if fr.value is not None}
     data = spec.build_output(values)
