@@ -1,0 +1,3 @@
+# Windows-skrypty z końcami linii CRLF (cmd źle parsuje .bat z LF), skrypty bash zawsze LF
+*.bat text eol=crlf
+*.sh  text eol=lf
