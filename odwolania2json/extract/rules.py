@@ -1,14 +1,20 @@
 """Rule-based extractor driven entirely by the YAML hints of each field.
 
-IMPLEMENTED: `patterns`, `labels`, `section` (objects/arrays), arrays with `item_split`.
-TODO(rules): 4. named heuristics (first-line values already work via a pattern: '\\A\\s*(?P<value>[^\\n]+)').
+IMPLEMENTED: `patterns`; `labels` (same line / leaders / next lines, typed shapes for date, amount, account);
+`section` on objects and arrays; arrays with `item_split`.
 
-Semantics:
-  * section.start / section.end: regexes searched (case-insensitive, diacritics folded) inside the parent region;
-    the region starts AFTER the start match and ends BEFORE the end match (or at the parent's end).
-  * item_split: regex marking the BEGINNING of each array item (use a lookahead, e.g. '(?=r\\. ?pr\\.)').
-    No match → the whole region is one item. No item_split → one item.
-  * inside a region, patterns/labels see only the region text ('\\A' = start of region).
+KNOWN LIMITS (YAML is fixed, the code adapts):
+  * multi-line values: the end of a value is GUESSED by line width (`_wrapped`), not read from the document;
+    these candidates should get lower confidence (TODO, see below).
+  * fields with neither `labels` nor `patterns` (nazwa, imie_nazwisko, pelnomocnik.*, ...) are not extracted.
+  * account shape expects 26 digits; real bank documents may have 24.
+
+TODO(rules):
+  1. confidence for guessed boundaries (note in Candidate.note), tuned against settings.min_confidence;
+  2. dictionary keywords for fields with `dictionary` (czynnosc_powod_id) — needs `registry` in extract_rules;
+  3. named heuristics for fields without hints, referenced generically (not per document class).
+
+Semantics: (оставьте существующие строки про section, item_split и область региона)
 """
 
 from __future__ import annotations
@@ -256,7 +262,9 @@ def _walk(field: FieldSpec, cpath: str, lo: int, hi: int, ctx: _Ctx, out: list[C
         if reg is None:
             return
         for i, (a, b) in enumerate(_items(field, ctx.full_f, *reg)):
-            _walk(field.items, f"{cpath}[{i}]", a, b, ctx, out) # type: ignore
+            if field.items is None:
+                return
+            _walk(field.items, f"{cpath}[{i}]", a, b, ctx, out)
     else:
         _leaf(field, cpath, lo, hi, ctx, out)
 
