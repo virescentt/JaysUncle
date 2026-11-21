@@ -20,6 +20,12 @@ Endpoints (contract for the frontend — web/):
   POST   /api/doc-types/test          → multipart "yaml" + "file" (1 PDF) → document payload + "test" — classified and
                                           extracted with a temporary registry (class added/replaced); nothing is saved
   PUT    /api/doc-types/{id}/yaml     → body like validate → validate, save <config_dir>/doc_types/<id>.yaml, reload
+  Form editor (the same class as plain data; validate / test / save go through the YAML endpoints above):
+  GET    /api/doc-types/meta          → {"field_types", "scopes", "grounds", "extraction_modes", "normalizers",
+                                          "validators", "dictionaries", "id_pattern", "template" (data of a new class)}
+  POST   /api/doc-types/parse         → body like validate → validate report + {"data" (JSON | null), "roundtrip_ok",
+                                          "losses": [what saving from the form would drop: comments, anchors, …]}
+  POST   /api/doc-types/dump          → body {"data": {...}} → {"yaml": "..."} (key order kept, unknown keys kept)
 
 Document payload: {"id", "filename", "json_filename", "doc_type", "doc_type_name", "confidence", "method", "scores",
   "reason", "data" (canonical JSON | null), "json_text" (output file content), "fields": [{"path", "value", "raw_value",
@@ -55,7 +61,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 from odwolania2json import CONFIG_DIR, PROJECT_ROOT, __version__
-from odwolania2json.api import workshop
+from odwolania2json.api import classform, workshop
 from odwolania2json.api.results import build_payload
 from odwolania2json.api.store import (
     DEFAULT_DPI,
@@ -290,6 +296,21 @@ async def _yaml_from_request(request: Request) -> str:
         raise HTTPException(400, "YAML musi być zakodowany w UTF-8") from e
 
 
+async def _json_from_request(request: Request) -> Any:
+    """JSON body read with the same size limit as a class YAML."""
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_YAML_BYTES + 1024:
+            raise HTTPException(413, "Za duże dane klasy")
+        chunks.append(chunk)
+    try:
+        return json.loads(b"".join(chunks) or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as e:
+        raise HTTPException(400, f"Niepoprawny JSON: {e}") from e
+
+
 def _guard_id(doc_type_id: str) -> str:
     if not workshop.valid_class_id(doc_type_id):
         raise HTTPException(400, "Nieprawidłowy identyfikator klasy (dozwolone: a-z, 0-9, _; maks. 64 znaki)")
@@ -453,6 +474,26 @@ def create_app(
     @app.get("/api/doc-types/template", response_class=PlainTextResponse)
     def doc_type_template():
         return PlainTextResponse(workshop.TEMPLATE_YAML, media_type="text/yaml; charset=utf-8")
+
+    @app.get("/api/doc-types/meta")
+    def doc_type_meta():
+        return classform.form_meta(state.dictionaries())
+
+    @app.post("/api/doc-types/parse")
+    async def parse_doc_type(request: Request):
+        text = await _yaml_from_request(request)
+        dictionaries = await run_in_threadpool(state.dictionaries)
+        return await run_in_threadpool(classform.parse_class_yaml, text, dictionaries)
+
+    @app.post("/api/doc-types/dump")
+    async def dump_doc_type(request: Request):
+        body = await _json_from_request(request)
+        data = body.get("data") if isinstance(body, dict) else None
+        try:
+            text = await run_in_threadpool(classform.dump_class, data)
+        except (ValueError, RecursionError) as e:
+            raise HTTPException(400, str(e)) from e
+        return {"yaml": text}
 
     @app.get("/api/doc-types/{doc_type_id}/yaml", response_class=PlainTextResponse)
     def get_doc_type_yaml(doc_type_id: str):

@@ -594,6 +594,60 @@ pre.json {
 .mini-table { width: 100%; }
 .mini-table td.v { word-break: break-word; }
 
+/* ---------------------------------------------------------------- workshop: form mode */
+.ws-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 14px; border: 0; background: var(--surface); color: var(--muted); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border-strong); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.cf { display: grid; gap: 14px; }
+.cf-sec { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 16px 14px; margin: 0; display: grid; gap: 10px; min-width: 0; }
+.cf-sec > legend { font-weight: 700; font-size: 15px; padding: 0 6px; }
+.cf h4 { margin: 4px 0 0; font-size: 14px; }
+.cf-hint { margin: 0; font-size: 13px; color: var(--muted); }
+.cf-lbl { display: grid; gap: 4px; font-size: 13px; min-width: 0; }
+.cf-lbl > span { font-weight: 600; }
+.cf input:not([type="checkbox"]), .cf select, .cf textarea {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; min-width: 0; width: 100%;
+}
+.cf textarea { resize: vertical; }
+.cf input:focus, .cf select:focus, .cf textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cf input.invalid { border-color: var(--err); }
+.cf .cf-short { max-width: 120px; }
+.cf-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; align-items: start; }
+.cf-check { color: var(--text); }
+.cf-siglist { display: grid; gap: 8px; justify-items: start; }
+.cf-siglist > * { justify-self: stretch; }
+.cf-siglist > .btn { justify-self: start; }
+.cf-sig { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.cf-sig .cf-sig-text { flex: 1 1 260px; width: auto; font-family: var(--mono); font-size: 13px; }
+.cf-weight { display: inline-flex; align-items: center; gap: 6px; }
+.cf-weight input { width: 72px !important; }
+.cf-fields { display: grid; gap: 8px; justify-items: start; }
+.cf-fields > * { justify-self: stretch; }
+.cf-fields > .btn { justify-self: start; }
+.cf-field { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--surface-2); padding: 6px 10px 10px; }
+.cf-field > summary { cursor: pointer; font-size: 14px; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-field > summary .cf-type { color: var(--accent); font-size: 12.5px; font-weight: 600; }
+.cf-field[open] > summary { margin-bottom: 8px; }
+.cf-field > :not(summary) + :not(summary) { margin-top: 8px; }
+.cf-row { display: grid; grid-template-columns: minmax(160px, 1.3fr) minmax(150px, 1fr) auto; gap: 10px; align-items: end; }
+.cf-tools { display: flex; gap: 4px; }
+.cf-sub { display: grid; gap: 8px; padding-left: 12px; border-left: 2px dashed var(--border-strong); }
+.cf-adv { border-top: 1px dashed var(--border); padding-top: 6px; }
+.cf-adv > summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; }
+.cf-adv[open] { display: grid; gap: 8px; }
+.cf-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.cf-checks .check { color: var(--text); font-family: var(--mono); font-size: 12.5px; }
+.cf-dialog { width: min(900px, calc(100vw - 32px)); max-height: 85vh; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 0; }
+.cf-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+.cf-dialog-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+.cf-dialog pre { margin: 0; padding: 12px 14px; font: 13px/1.55 var(--mono); white-space: pre; overflow: auto; max-height: calc(85vh - 60px); }
+@media (max-width: 760px) {
+  .cf-row { grid-template-columns: 1fr; }
+}
+
 /* ---------------------------------------------------------------- toast */
 .toast {
   position: fixed;

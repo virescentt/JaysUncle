@@ -111,9 +111,16 @@
           <h2 id="ws-title">Wybierz klasę z listy</h2>
           <p class="muted" id="ws-file"></p>
         </div>
-        <span class="dirty" id="ws-dirty" hidden>niezapisane zmiany</span>
+        <div class="ws-head-right">
+          <span class="dirty" id="ws-dirty" hidden>niezapisane zmiany</span>
+          <div class="seg" id="ws-modes" role="group" aria-label="Tryb edycji">
+            <button type="button" data-mode="form" aria-pressed="true" title="Przyjazny formularz — bez znajomości YAML">Formularz</button>
+            <button type="button" data-mode="yaml" aria-pressed="false" title="Surowy plik YAML — pełna kontrola">YAML</button>
+          </div>
+        </div>
       </header>
-      <div class="editor">
+      <div id="ws-form" class="cf" hidden></div>
+      <div class="editor" id="ws-editor">
         <pre class="gutter" id="ws-gutter" aria-hidden="true">1</pre>
         <textarea id="ws-yaml" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="Treść pliku YAML klasy dokumentu" aria-describedby="ws-keys" disabled></textarea>
       </div>
@@ -123,11 +130,16 @@
         <input type="file" id="ws-test-file" accept=".pdf,application/pdf" hidden>
         <button class="btn primary" id="ws-save" type="button" disabled>Zapisz</button>
         <button class="btn ghost" id="ws-revert" type="button" disabled>Przywróć</button>
+        <button class="btn ghost" id="ws-preview" type="button" hidden>Podgląd YAML</button>
         <span class="spacer"></span>
         <span class="muted small" id="ws-keys">Ctrl/⌘+S zapisz · Ctrl/⌘+Enter sprawdź · Tab = 2 spacje (Esc, potem Tab — wyjście)</span>
       </div>
       <div id="ws-msg" class="ws-msg" aria-live="polite"></div>
       <div id="ws-result"></div>
+      <dialog id="ws-preview-dlg" class="cf-dialog" aria-label="Podgląd YAML">
+        <form method="dialog" class="cf-dialog-head"><strong>Podgląd pliku YAML</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
+        <pre id="ws-preview-text"></pre>
+      </dialog>
     </section>
   </main>
 

@@ -1,7 +1,11 @@
 // Zakładka "Klasy dokumentów": edycja YAML klas (config/doc_types/*.yaml) → Sprawdź / Testuj na PDF / Zapisz.
 // Nowa klasa dokumentu = nowy plik YAML, bez zmian w kodzie.
+// Dwa tryby edycji tej samej klasy: "Formularz" (classform.js, dla osób nieznających YAML) i "YAML" (surowy tekst).
+// Pole tekstowe YAML jest zawsze źródłem prawdy dla Sprawdź / Testuj / Zapisz: w trybie formularza zmiany są najpierw
+// zamieniane na YAML (/api/doc-types/dump). Przełączenie bez zmian w formularzu nie zmienia tekstu YAML (komentarze zostają).
 
 import { $, esc, api, toast, pct, fmtValue, trunc, badgeHtml, methodHtml, confHtml } from "./util.js";
+import { buildModel, modelToJson, renderForm, canon } from "./classform.js";
 
 const ws = {
   classes: [],
@@ -9,17 +13,36 @@ const ws = {
   loaded: false,
   busy: false,
   errorLines: new Set(),
+  mode: "form", // "form" | "yaml"
+  meta: null, // GET /api/doc-types/meta
+  form: null, // {model, snapshot (JSON of the model when loaded / last synced), losses}
   hooks: { onOpenDocument: () => {}, onSaved: () => {}, getHealth: () => null },
 };
 
 const el = {};
-const isDirty = () => !!ws.current && el.yaml.value !== ws.current.original;
+const formJson = () => (ws.form ? modelToJson(ws.form.model) : null);
+const formChanged = () => ws.mode === "form" && !!ws.form && JSON.stringify(formJson().json) !== ws.form.snapshot;
+const isDirty = () => !!ws.current && (el.yaml.value !== ws.current.original || formChanged());
+const jsonPost = (path, body) =>
+  api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 // ------------------------------------------------------------------ public
 export function initWorkshop(hooks) {
   Object.assign(ws.hooks, hooks);
-  for (const id of ["yaml", "gutter", "check", "test", "test-file", "save", "revert", "new", "title", "file", "dirty", "msg", "result"])
+  for (const id of ["yaml", "gutter", "check", "test", "test-file", "save", "revert", "new", "title", "file", "dirty", "msg", "result",
+    "form", "editor", "preview", "preview-dlg", "preview-text", "modes", "keys"])
     el[id.replace("-", "_")] = $(`#ws-${id}`);
+  try {
+    ws.mode = localStorage.getItem("ws-mode") === "yaml" ? "yaml" : "form";
+  } catch {
+    /* storage unavailable */
+  }
+  el.modes.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-mode]");
+    if (b) setMode(b.dataset.mode);
+  });
+  el.preview.addEventListener("click", previewYaml);
+  showMode();
   el.list = $("#class-list");
 
   el.list.addEventListener("click", (e) => {
@@ -36,9 +59,11 @@ export function initWorkshop(hooks) {
     el.test_file.value = "";
     if (f) test(f);
   });
-  el.msg.addEventListener("click", (e) => {
+  el.msg.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-line]");
-    if (b) goToLine(+b.dataset.line);
+    if (!b) return;
+    if (ws.mode === "form" && !(await setMode("yaml"))) return;
+    goToLine(+b.dataset.line);
   });
   el.result.addEventListener("click", (e) => {
     if (e.target.closest("[data-open]") && ws.lastTest) ws.hooks.onOpenDocument(ws.lastTest);
@@ -53,6 +78,89 @@ export function initWorkshop(hooks) {
 export function showWorkshop() {
   if (!el.list) return;
   if (!ws.loaded) refreshClasses();
+  loadMeta().catch(() => {});
+}
+
+async function loadMeta() {
+  if (!ws.meta) ws.meta = await api("/api/doc-types/meta");
+  return ws.meta;
+}
+
+// ------------------------------------------------------------------ form ↔ YAML
+function showMode() {
+  const form = ws.mode === "form";
+  for (const b of el.modes.querySelectorAll("[data-mode]")) b.setAttribute("aria-pressed", String(b.dataset.mode === ws.mode));
+  el.form.hidden = !form || !ws.form;
+  el.editor.hidden = form && !!ws.form;
+  el.keys.hidden = form;
+  el.preview.hidden = !form;
+}
+
+/** Fill the form from the YAML text. false (and errors shown) if the YAML cannot be read as data. */
+async function loadForm() {
+  const [meta, parsed] = await Promise.all([loadMeta(), jsonPost("/api/doc-types/parse", { yaml: el.yaml.value })]);
+  if (!parsed.data) {
+    showReport(parsed);
+    showMessage("err", "Nie można otworzyć formularza — najpierw popraw błędy w YAML:" + issueList(parsed.errors || []));
+    return false;
+  }
+  const model = buildModel(parsed.data);
+  const { json } = modelToJson(model);
+  const losses = [...(parsed.losses || [])];
+  if (canon(json) !== canon(parsed.data)) losses.push("część ustawień ma postać, której formularz nie odwzorowuje dokładnie");
+  ws.form = { model, snapshot: JSON.stringify(json), losses };
+  renderForm(el.form, model, { meta, losses, onChange: updateHeader });
+  return true;
+}
+
+/** Write form changes into the YAML text (only if the form was changed). false if the form has problems. */
+async function syncForm() {
+  if (ws.mode !== "form" || !ws.form) return true;
+  const { json, problems } = formJson();
+  if (problems.length) {
+    showMessage("err", `<strong>Popraw formularz:</strong>${issueList(problems.map((message) => ({ message })))}`);
+    return false;
+  }
+  if (JSON.stringify(json) === ws.form.snapshot) return true; // unchanged → keep the YAML text as it is
+  const res = await jsonPost("/api/doc-types/dump", { data: json });
+  el.yaml.value = res.yaml;
+  ws.form.snapshot = JSON.stringify(json);
+  ws.form.dumped = true;
+  updateGutter();
+  return true;
+}
+
+async function setMode(mode) {
+  if (mode === ws.mode && (mode === "yaml" || ws.form)) return true;
+  try {
+    if (mode === "yaml") {
+      if (!(await syncForm())) return false;
+    } else if (ws.current && !(await loadForm())) {
+      return false;
+    }
+  } catch (e) {
+    showMessage("err", esc(e.message));
+    return false;
+  }
+  ws.mode = mode;
+  try {
+    localStorage.setItem("ws-mode", mode);
+  } catch {
+    /* storage unavailable */
+  }
+  showMode();
+  updateHeader();
+  return true;
+}
+
+async function previewYaml() {
+  try {
+    if (!(await syncForm())) return;
+    el.preview_text.textContent = el.yaml.value;
+    el.preview_dlg.showModal();
+  } catch (e) {
+    showMessage("err", esc(e.message));
+  }
 }
 
 export async function refreshClasses() {
@@ -93,7 +201,7 @@ async function openClass(id) {
   try {
     const text = await api(`/api/doc-types/${encodeURIComponent(id)}/yaml`);
     const c = ws.classes.find((x) => x.id === id);
-    setEditor(text, { id, file: c?.file, name: c?.name || id });
+    await setEditor(text, { id, file: c?.file, name: c?.name || id });
   } catch (e) {
     showMessage("err", esc(e.message));
   }
@@ -102,17 +210,21 @@ async function openClass(id) {
 async function newClass() {
   if (!confirmDiscard()) return;
   try {
-    const text = await api("/api/doc-types/template");
-    setEditor(text, { id: null, file: null, name: null });
-    el.yaml.focus();
+    const text =
+      ws.mode === "form"
+        ? (await jsonPost("/api/doc-types/dump", { data: (await loadMeta()).template })).yaml
+        : await api("/api/doc-types/template");
+    await setEditor(text, { id: null, file: null, name: null });
+    if (ws.mode === "yaml") el.yaml.focus();
     toast("Szablon nowej klasy — zmień id, sygnały i pola, potem Testuj i Zapisz", 4000);
   } catch (e) {
     showMessage("err", esc(e.message));
   }
 }
 
-function setEditor(text, cur) {
+async function setEditor(text, cur) {
   ws.current = { ...cur, original: text };
+  ws.form = null;
   el.yaml.value = text;
   el.yaml.disabled = false;
   el.yaml.scrollTop = 0;
@@ -123,6 +235,18 @@ function setEditor(text, cur) {
   el.result.innerHTML = "";
   ws.lastTest = null;
   renderList();
+  if (ws.mode === "form") {
+    try {
+      if (!(await loadForm())) {
+        ws.mode = "yaml"; // unreadable YAML → fix it in the text editor
+      }
+    } catch (e) {
+      ws.mode = "yaml";
+      showMessage("err", esc(e.message));
+    }
+  }
+  showMode();
+  updateHeader();
 }
 
 function updateHeader() {
@@ -133,7 +257,7 @@ function updateHeader() {
   const dirty = isDirty();
   el.dirty.hidden = !dirty;
   const readonly = !!ws.hooks.getHealth()?.readonly;
-  el.check.disabled = el.test.disabled = ws.busy;
+  el.check.disabled = el.test.disabled = el.preview.disabled = ws.busy;
   el.save.disabled = ws.busy || readonly;
   el.save.title = readonly ? "Zapisywanie wyłączone na serwerze (ODWOLANIA2JSON_WEB_READONLY)" : "Zapisz do config/doc_types/ i przeładuj potok";
   el.revert.disabled = ws.busy || !dirty;
@@ -270,6 +394,7 @@ async function check() {
   if (!ws.current || ws.busy) return;
   setBusy(true, "Sprawdzanie…");
   try {
+    if (!(await syncForm())) return;
     const rep = await validate();
     showReport(rep, summaryText(rep));
   } catch (e) {
@@ -281,6 +406,11 @@ async function check() {
 
 async function test(file) {
   if (!ws.current || ws.busy) return;
+  try {
+    if (!(await syncForm())) return;
+  } catch (e) {
+    return showMessage("err", esc(e.message));
+  }
   setBusy(true, `Testowanie na pliku ${file.name} (konfiguracja nie jest zapisywana)…`);
   el.result.innerHTML = "";
   const body = new FormData();
@@ -336,8 +466,13 @@ function renderTest(p) {
 async function save() {
   if (!ws.current || ws.busy) return;
   if (ws.hooks.getHealth()?.readonly) return toast("Zapisywanie klas jest wyłączone na serwerze");
+  if (formChanged() && ws.form.losses.length) {
+    const q = `Zapis z formularza usunie z pliku: ${ws.form.losses.join("; ")}.\n\nAby to zachować, anuluj i edytuj klasę w trybie YAML. Zapisać mimo to?`;
+    if (!confirm(q)) return;
+  }
   setBusy(true, "Sprawdzanie przed zapisem…");
   try {
+    if (!(await syncForm())) return;
     const rep = await validate();
     if (!rep.ok) {
       showReport(rep);
@@ -363,6 +498,7 @@ async function save() {
       body: JSON.stringify({ yaml: text }),
     });
     ws.current = { id, file: res.file, name: rep.name, original: text };
+    if (ws.form?.dumped) ws.form.losses = []; // the file now is what the form wrote — nothing more to lose
     await refreshClasses();
     await ws.hooks.onSaved();
     showReport(
@@ -381,12 +517,13 @@ async function save() {
   }
 }
 
-function revert() {
+async function revert() {
   if (!ws.current || !isDirty()) return;
   if (!confirm("Przywrócić ostatnio wczytaną wersję? Zmiany w edytorze zostaną utracone.")) return;
   el.yaml.value = ws.current.original;
   ws.errorLines = new Set();
   updateGutter();
-  updateHeader();
   el.msg.innerHTML = "";
+  if (ws.mode === "form") await loadForm().catch((e) => showMessage("err", esc(e.message)));
+  updateHeader();
 }

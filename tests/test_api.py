@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from odwolania2json import CONFIG_DIR, PROJECT_ROOT
@@ -21,6 +22,7 @@ from odwolania2json.api.app import create_app
 from odwolania2json.api.highlight import PageIndex, field_boxes, search_targets
 from odwolania2json.api.workshop import TEMPLATE_YAML
 from odwolania2json.models import Evidence, FieldResult, Word
+from odwolania2json.spec import DocTypeSpec
 
 DATA = PROJECT_ROOT / "data" / "uzp" / "dane"
 SYNTH = DATA / "przyklad_01" / "pelnomocnictwo.pdf"
@@ -249,11 +251,12 @@ def test_put_saves_into_temp_config_and_reloads(client, config_dir):
 
 
 def test_put_refused_in_readonly_mode(config_dir, tmp_path):
+    before = _tree_hash(config_dir)  # (config/doc_types may already contain a nowa_klasa.yaml)
     app = create_app(config_dir, mode="rules", store_dir=tmp_path / "s", readonly=True)
     with TestClient(app) as c:
-        r = c.put("/api/doc-types/nowa_klasa/yaml", json={"yaml": TEMPLATE_YAML})
+        r = c.put("/api/doc-types/nowa_klasa/yaml", json={"yaml": TEMPLATE_YAML.replace("Nowa klasa", "Inna", 1)})
         assert r.status_code == 403
-    assert not (config_dir / "doc_types" / "nowa_klasa.yaml").exists()
+    assert _tree_hash(config_dir) == before
 
 
 # --------------------------------------------------------------------------- highlight boxes (unit)
@@ -525,3 +528,87 @@ def test_bad_regex_reported_once(client, config_dir):
     rep = _validate(client, good.replace(section, "start: '(niedomknięty'", 1))
     (err,) = rep["errors"]
     assert "(niedomknięty" in err["message"] and "wyrażenie regularne" in err["message"] and err["line"]
+
+
+# --------------------------------------------------------------------------- class workshop: form editor (YAML ↔ JSON)
+
+
+def _class_files(config_dir: Path) -> list[Path]:
+    return [*sorted((config_dir / "doc_types").glob("*.y*ml")), TED_CLASS]
+
+
+def test_parse_dump_roundtrip_keeps_every_class(client, config_dir):
+    for f in _class_files(config_dir):
+        text = f.read_text(encoding="utf-8")
+        parsed = client.post("/api/doc-types/parse", json={"yaml": text}).json()
+        assert parsed["ok"] and parsed["data"]["id"] == parsed["id"], f.name
+        assert parsed["roundtrip_ok"], f.name
+        if text.lstrip().startswith("#"):
+            assert any("komentarze" in loss for loss in parsed["losses"]), f.name
+        r = client.post("/api/doc-types/dump", json={"data": parsed["data"]})
+        assert r.status_code == 200, r.text
+        dumped = r.json()["yaml"]
+        assert list(parsed["data"]) == list(yaml.safe_load(dumped)), f.name  # key order kept
+        assert DocTypeSpec.model_validate(yaml.safe_load(dumped)) == DocTypeSpec.model_validate(yaml.safe_load(text)), (
+            f.name
+        )
+        assert _validate(client, dumped)["ok"], f.name
+        again = client.post("/api/doc-types/parse", json={"yaml": dumped}).json()
+        assert again["data"] == parsed["data"] and again["losses"] == [], f.name
+
+    anchored = "a: &x {b: 1}\nc: *x\nd: 'tekst # bez komentarza'\n"
+    losses = client.post("/api/doc-types/parse", json={"yaml": anchored}).json()["losses"]
+    assert len(losses) == 1 and "kotwice" in losses[0]  # '#' inside a quoted string is not a comment
+
+
+def test_parse_reports_unreadable_yaml_and_non_json_values(client):
+    bad = client.post("/api/doc-types/parse", json={"yaml": "id: x\n  name: ["}).json()
+    assert bad["data"] is None and not bad["ok"] and bad["errors"]
+    dated = client.post(
+        "/api/doc-types/parse", json={"yaml": TEMPLATE_YAML.replace("version: 1", "version: 2024-01-01")}
+    )
+    body = dated.json()
+    assert body["data"]["version"] == "2024-01-01" and not body["roundtrip_ok"] and body["losses"]
+    unknown = client.post("/api/doc-types/parse", json={"yaml": "id: a\nname: A\nfoo: [1]\n"}).json()
+    assert unknown["data"]["foo"] == [1] and not unknown["ok"]  # unknown keys are kept in the data (and reported)
+    assert client.post("/api/doc-types/dump", json={"data": [1, 2]}).status_code == 400
+    assert (
+        client.post(
+            "/api/doc-types/dump", content=b"{not json", headers={"content-type": "application/json"}
+        ).status_code
+        == 400
+    )
+
+
+def test_doc_type_meta(client):
+    meta = client.get("/api/doc-types/meta").json()
+    assert meta["field_types"] == ["string", "integer", "number", "boolean", "date", "object", "array"]
+    assert {"date_pl", "digits_only"} <= {n["name"] for n in meta["normalizers"]}
+    assert {"nip", "iban_pl"} <= {v["name"] for v in meta["validators"]}
+    assert "czynnosc_powod" in {d["id"] for d in meta["dictionaries"]}
+    assert "head" in meta["scopes"] and "auto" in meta["grounds"]
+    assert re.fullmatch(meta["id_pattern"], "nowa_klasa") and not re.fullmatch(meta["id_pattern"], "Zła klasa")
+    if meta["extraction_modes"]:
+        assert set(meta["extraction_modes"]) == {"rules", "llm", "hybrid"}
+        assert meta["template"]["extraction"]["mode"] == "llm"  # a new class works with field descriptions only
+
+
+def test_new_class_from_form_json_validates_and_saves(client, config_dir):
+    data = client.get("/api/doc-types/meta").json()["template"]
+    data["id"] = "umowa_najmu"
+    data["name"] = "Umowa najmu"
+    data["classification"]["signals"] = [{"pattern": re.escape("Umowa najmu (lokalu)"), "weight": 3, "scope": "head"}]
+    data["output"]["strony"] = {
+        "type": "array",
+        "description": "Strony umowy.",
+        "items": {"type": "object", "properties": {"nazwa": {"type": "string", "description": "Nazwa strony."}}},
+    }
+    text = client.post("/api/doc-types/dump", json={"data": data}).json()["yaml"]
+    assert "Umowa najmu" in text and "\\u" not in text  # Polish characters written as they are
+    assert "instructions: |" in text  # multi-line text as a readable block
+    rep = _validate(client, text)
+    assert rep["ok"], rep["errors"]
+    assert rep["summary"]["fields"] == 3
+    r = client.put("/api/doc-types/umowa_najmu/yaml", json={"yaml": text})
+    assert r.status_code == 200 and r.json()["created"]
+    assert (config_dir / "doc_types" / "umowa_najmu.yaml").read_text(encoding="utf-8") == text
