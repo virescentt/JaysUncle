@@ -120,11 +120,7 @@ class Scorer:
         if isinstance(pred, list) and isinstance(gold, list) and pred and gold:
             if all(isinstance(x, dict) for x in pred + gold):
                 sims = sorted(
-                    (
-                        (self.similarity(p, g), -i, -j, i, j)
-                        for i, p in enumerate(pred)
-                        for j, g in enumerate(gold)
-                    ),
+                    ((self.similarity(p, g), -i, -j, i, j) for i, p in enumerate(pred) for j, g in enumerate(gold)),
                     reverse=True,
                 )
                 mapping, used = {}, set()
@@ -155,9 +151,7 @@ class Scorer:
             else:
                 fc.fp = fc.fn = 1
             if not fc.tp:
-                self.errors[key].append(
-                    {"case": case, "file": name, "gold": fg.get(path), "pred": fp_.get(path)}
-                )
+                self.errors[key].append({"case": case, "file": name, "gold": fg.get(path), "pred": fp_.get(path)})
             self.by_field[key].add(fc)
             c.add(fc)
         self.by_type[dtype].add(c)
@@ -167,8 +161,9 @@ class Scorer:
 
     # ------------------------------------------------------------------ cases
     def score_case(self, pred_dir: Path, gold_dir: Path, case: str) -> None:
-        gold = load_jsons(gold_dir)
-        pred = load_jsons(pred_dir) if pred_dir.exists() else {}
+        # empty file / {} = "document not recognised" (negative) → not a document to compare
+        gold = {n: d for n, d in load_jsons(gold_dir).items() if d}
+        pred = {n: d for n, d in (load_jsons(pred_dir) if pred_dir.exists() else {}).items() if d}
         by_type_g, by_type_p = defaultdict(list), defaultdict(list)
         for n, d in gold.items():
             by_type_g[doc_type(d)].append((n, d))
@@ -223,9 +218,12 @@ def load_jsons(folder: Path) -> dict[str, Any]:
 
 
 def find_cases(gold_root: Path) -> list[str]:
-    """Case = folder containing gold JSON files (relative path)."""
-    dirs = {f.parent for f in Path(gold_root).rglob("*.json")}
-    return sorted(str(d.relative_to(gold_root)) for d in dirs)
+    """Case = folder containing gold JSON files or PDFs (relative path).
+    A folder with PDFs but no gold JSON (e.g. dane/negatywne) = only negative documents: any non-empty
+    prediction there counts as false positives."""
+    root = Path(gold_root)
+    dirs = {f.parent for f in root.rglob("*") if f.is_file() and f.suffix.lower() in (".json", ".pdf")}
+    return sorted(str(d.relative_to(root)) for d in dirs)
 
 
 def score_dirs(pred_root: Path, gold_root: Path, cases: list[str] | None = None, lenient: bool = False,

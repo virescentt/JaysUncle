@@ -32,9 +32,7 @@ def score_document(doc: Document, registry: Registry, settings: ClassificationSe
     return scores
 
 
-def classify_rules(
-    doc: Document, registry: Registry, settings: ClassificationSettings
-) -> ClassificationResult:
+def classify_rules(doc: Document, registry: Registry, settings: ClassificationSettings) -> ClassificationResult:
     if not doc.text.strip():
         return ClassificationResult(None, 0.0, "rules", {}, "empty document (no text, no OCR)")
     scores = score_document(doc, registry, settings)

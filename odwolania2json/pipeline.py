@@ -18,7 +18,7 @@ from odwolania2json.extract.merge import merge
 from odwolania2json.ingest import load_document
 from odwolania2json.llm import LLMClient
 from odwolania2json.models import ClassificationResult, DocumentResult
-from odwolania2json.output import output_path_for, write_json
+from odwolania2json.output import output_path_for, write_json, write_result
 from odwolania2json.settings import Settings
 from odwolania2json.spec import Registry, load_registry
 
@@ -87,10 +87,7 @@ class Pipeline:
                 res = DocumentResult(source=pdf, classification=ClassificationResult(None, 0.0, "none"))
                 res.errors.append(f"{type(e).__name__}: {e}")
             out_path = output_path_for(pdf, input_root, output_root)
-            if res.data is not None:
-                write_json(out_path, res.data, out_cfg.indent)
-            elif out_path.exists():
-                out_path.unlink()  # stale result from a previous run
+            write_result(out_path, res.data, out_cfg.unknown_output, out_cfg.indent)
             if traces_root is not None:
                 write_json(output_path_for(pdf, input_root, traces_root, ".trace.json"), res.to_trace())
             results.append(res)

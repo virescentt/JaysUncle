@@ -27,6 +27,8 @@ entries:
     hint: Zaskarżona jest ZMIANA (modyfikacja) treści SWZ dokonana w toku postępowania.
     keywords: ['modyfikac\w* (treści )?SWZ', 'zmian\w* treści SWZ']
   - id: 6
+    # UWAGA: dane treningowe mają „Odpowiedzi i wyjaśnienia do SWZ”, a słownik organizatora
+    # (oczekiwane-json/czynnosc_powod_id_dict.md) „Odpowiedzi/wyjaśnienia do SWZ” — do potwierdzenia z UZP.
     opis: Odpowiedzi i wyjaśnienia do SWZ
     hint: Zaskarżone są odpowiedzi na pytania wykonawców / wyjaśnienia treści SWZ.
     keywords: ['wyjaśnie\w* treści SWZ', 'odpowiedz\w* na pytania']
@@ -50,4 +52,7 @@ entries:
     opis: Opis przedmiotu zamówienia (OPZ)
     hint: Zarzut dotyczy opisu przedmiotu zamówienia (OPZ) — parametrów technicznych, zakresu, wymagań co do przedmiotu.
     keywords: ['opis\w* przedmiotu zamówienia', '\bOPZ\b']
-  # TODO: id 12 nie występuje w danych treningowych — ustalić z mentorami i uzupełnić.
+  - id: 12
+    opis: Projektowane postanowienia umowy
+    hint: Zarzut dotyczy projektowanych postanowień umowy (wzoru umowy) — np. kar umownych, terminów, waloryzacji, podziału ryzyk.
+    keywords: ['projektowan\w* postanowie\w* umowy', 'wz[oó]r\w* umowy', 'kar\w* umown\w*']

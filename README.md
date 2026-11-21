@@ -11,7 +11,7 @@ Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane
 ## Co robi
 
 1. Przyjmuje PDF-y z folderu `input/` (podfoldery = sprawy) — z warstwą tekstową albo skany (OCR).
-2. **Rozpoznaje rodzaj dokumentu** (odwołanie / pełnomocnictwo / przelew; inne dokumenty, np. ogłoszenie TED, są pomijane).
+2. **Rozpoznaje rodzaj dokumentu** na podstawie treści, nie nazwy pliku (odwołanie / pełnomocnictwo / przelew; inne dokumenty, np. ogłoszenie TED czy wyrok KIO, dostają pusty plik `.json`).
 3. **Wyodrębnia dane** właściwe dla danej klasy (strony postępowania, numery KRS/NIP/REGON, BZP/TED, czynność zaskarżona w pierwszym zarzucie, dane przelewu…).
 4. Zapisuje JSON zgodny z [oczekiwanym modelem](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/tree/main/oczekiwane-json) do `output/` — **ta sama nazwa i struktura katalogów co w `input/`**.
 5. Dla każdej wartości zapisuje **ślad** (`traces/`): strona, fragment tekstu, metoda, pewność — przejrzystość ekstrakcji.
@@ -19,7 +19,7 @@ Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane
 ```
 input/case1/odwolanie_nr_1.pdf        →  output/case1/odwolanie_nr_1.json
 input/case1/pelnomocnictwo_nr_1.pdf   →  output/case1/pelnomocnictwo_nr_1.json
-input/case1/inny_dokument.pdf         →  (pominięty — nie należy do żadnej klasy)
+input/case1/inny_dokument.pdf         →  output/case1/inny_dokument.json   (pusty plik — nie należy do żadnej klasy)
 ```
 
 ## Architektura w skrócie
@@ -34,13 +34,14 @@ PDF ─► INGEST (pdfplumber; skan → OCR Tesseract/RapidOCR)
 
 - **Klasa dokumentu = jeden plik YAML** w `config/doc_types/` (sygnały rozpoznawania, struktura wyniku, opisy pól, wskazówki ekstrakcji, normalizacja). **Nowa klasa nie wymaga zmian w kodzie** — zob. [docs/NOWA_KLASA_DOKUMENTU.md](docs/NOWA_KLASA_DOKUMENTU.md).
 - Tryby ekstrakcji (`config/settings.yaml` lub `EXTRACTION_MODE` w `.env`): `rules` (bez LLM, offline) · `llm` · `hybrid` (domyślny).
-- LLM: **wyłącznie modele open-source** przez API zgodne z OpenAI (Ollama, vLLM, llama.cpp lub hostowane modele z otwartymi wagami). Bez GPU po stronie aplikacji.
+- LLM: **wyłącznie modele open-source** przez API zgodne z OpenAI. Aplikacja działa na laptopie biurowym (16 GB RAM, Intel i7, bez GPU) — zgodnie z wymaganiami organizatora LLM jest wywoływany przez API dostawcy z serwerami w UE/EOG (klucz w `.env`, nie w repozytorium). Lokalnie można też użyć Ollama / vLLM / llama.cpp.
+- Model LLM: *(do uzupełnienia — nazwa, liczba parametrów, dostawca, lokalizacja serwerów)*.
 - Wszystkie zależności open source o licencjach permisywnych (MIT / BSD / Apache-2.0).
 
 ## Wymagania
 
 - **Python 3.13+**
-- (zalecane) **Tesseract OCR z językiem polskim** — dla skanów. Bez niego działa zapasowy RapidOCR (instalowany przez pip; gorzej radzi sobie z polskimi znakami).
+- OCR dla skanów działa od razu po `pip install` (RapidOCR). Opcjonalnie **Tesseract z językiem polskim** — lepiej radzi sobie z polskimi znakami:
   - macOS: `brew install tesseract tesseract-lang`
   - Ubuntu/Debian: `sudo apt install tesseract-ocr tesseract-ocr-pol`
   - Windows: [instalator UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) (zaznacz język *Polish*)
@@ -109,7 +110,8 @@ Przydatne komendy (`python -m odwolania2json …`):
 
 ```bash
 python scripts/fetch_data.py --sample-input 3   # dane UZP → data/uzp/ (+ 3 sprawy do input/)
-python -m evaluation.run_eval                    # 60 spraw treningowych → F1 po polach
+python -m evaluation.run_eval                    # 60 spraw syntetycznych + dokumenty negatywne (~20 s)
+python -m evaluation.run_eval --subset scans     # 30 prawdziwych skanów organizatora (OCR, kilka minut)
 python -m evaluation.run_eval --mode rules --limit 10
 python scripts/make_scans.py && python -m evaluation.run_eval --data data/scans/dane   # syntetyczne skany
 ```

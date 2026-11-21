@@ -16,14 +16,19 @@ classification:
   min_score: 4
   signals:
     - { pattern: 'potwierdzenie (wykonania |realizacji )?(polecenia )?przelewu|polecenie przelewu|dowód wykonania przelewu|potwierdzenie (operacji bankowej|transakcji)|potwierdzenie przelewu', weight: 4, scope: head }
-    - { pattern: 'rachunek (odbiorcy|beneficjenta|uznawany)', weight: 2 }
+    - { pattern: '\bprzelew\w*', weight: 2, scope: head }       # "Przelew krajowy", "Typ przelewu"
+    - { pattern: 'rachunek (odbiorcy|beneficjenta|uznawany|kontrahenta)|na rachunek', weight: 2 }
     - { pattern: 'rachunek (zleceniodawcy|nadawcy|obciążany)|z rachunku', weight: 2 }
-    - { pattern: '\bPL ?\d{2}(?: ?\d{4}){6}\b', weight: 1 }
+    - { pattern: '\b(PL ?)?\d{2}(?: ?\d{4}){6}\b', weight: 1 }  # numer rachunku (NRB/IBAN)
     - { pattern: '\bkwota\b', weight: 1 }
-    - { pattern: 'tytuł(em| przelewu)?\b', weight: 1 }
+    - { pattern: 'tytu\w{0,2}em|tytuł przelewu|\btytuł\b', weight: 1 }   # "Tytutem" = OCR "Tytułem"
+    - { pattern: '\bstatus\b|wykonan[ey]|zrealizowan\w*', weight: 1 }
+    - { pattern: 'bankowości (elektronicznej|internetowej)|elixir|kontrahent\w*', weight: 1 }
   negative_signals:
     - { pattern: '^\s*ODWOŁANIE\s*$', weight: 4, case_sensitive: true }
     - { pattern: 'udziela\w* pełnomocnictwa', weight: 3 }
+    # ogłoszenia o zamówieniu (TED/BZP) wspominają „przelewem na rachunek” (wadium) i mają pole „Tytuł:”
+    - { pattern: 'see the notice on ted|procedura konkurencyjna|ogłoszenie o zamówieniu|oficjalna nazwa|dziennik urzędowy|\bOJ S\b', weight: 4 }
 
 # --- 2. Wskazówki dla ekstrakcji LLM ---------------------------------------
 extraction:

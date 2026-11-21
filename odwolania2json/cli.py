@@ -24,9 +24,7 @@ console = Console()
 
 
 def _setup_logging() -> None:
-    logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO"), format="%(levelname)s %(name)s: %(message)s"
-    )
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(levelname)s %(name)s: %(message)s")
 
 
 @app.command()
@@ -48,18 +46,14 @@ def run(
     pipe = Pipeline(settings)
     total = len(find_pdfs(input)[:limit])
     llm_info = settings.llm.model if pipe.llm else "brak (tylko reguły)"
-    console.print(
-        f"[bold]Odwołania2JSON[/] · tryb: {settings.extraction.mode} · LLM: {llm_info} · plików: {total}"
-    )
+    console.print(f"[bold]Odwołania2JSON[/] · tryb: {settings.extraction.mode} · LLM: {llm_info} · plików: {total}")
 
     def show(res):
         c = res.classification
-        status = f"[green]{c.doc_type}[/]" if c.doc_type else "[yellow]pominięty (nierozpoznany)[/]"
+        status = f"[green]{c.doc_type}[/]" if c.doc_type else "[yellow]nierozpoznany → pusty JSON[/]"
         extra = " [dim](OCR)[/]" if res.scanned else ""
         err = f" [red]{'; '.join(res.errors)}[/]" if res.errors else ""
-        console.print(
-            f"  {res.source.relative_to(input)} → {status} ({c.confidence:.2f}, {c.method}){extra}{err}"
-        )
+        console.print(f"  {res.source.relative_to(input)} → {status} ({c.confidence:.2f}, {c.method}){extra}{err}")
 
     results = pipe.run(input, output, traces, limit, on_result=show)
     written = sum(1 for r in results if r.data is not None)
@@ -108,9 +102,7 @@ def doc_types():
     registry = load_registry()
     table = Table("id", "nazwa", "pola", "sygnały", "plik")
     for dt in registry.doc_types.values():
-        table.add_row(
-            dt.id, dt.name, str(len(dt.leaf_specs())), str(len(dt.classification.signals)), f"{dt.id}.yaml"
-        )
+        table.add_row(dt.id, dt.name, str(len(dt.leaf_specs())), str(len(dt.classification.signals)), f"{dt.id}.yaml")
     console.print(table)
     problems = registry.check()
     if problems:

@@ -58,9 +58,7 @@ class FieldSpec(_Strict):
 
     # --- post-processing ---
     normalize: list[str] = Field(default_factory=list)  # names from odwolania2json/normalize
-    validators: list[str] = Field(
-        default_factory=list, alias="validate"
-    )  # names from odwolania2json/validate
+    validators: list[str] = Field(default_factory=list, alias="validate")  # names from odwolania2json/validate
     ground: Ground = "auto"  # how to verify that the value really occurs in the text
 
     # --- nesting ---

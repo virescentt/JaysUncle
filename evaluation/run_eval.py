@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from evaluation.score import find_cases, print_report, score_dirs
-from odwolania2json.output import output_path_for, write_json
+from odwolania2json.output import output_path_for, write_json, write_result
 from odwolania2json.pipeline import Pipeline, find_pdfs
 from odwolania2json.settings import Settings
 
@@ -28,12 +28,16 @@ BASELINE = Path("runs/baseline_report.json")
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Pipeline on the training set + F1")
-    ap.add_argument(
-        "--data", type=Path, default=Path("data/uzp/dane"), help="cases: <data>/<case>/*.pdf + gold *.json"
-    )
+    ap.add_argument("--data", type=Path, default=Path("data/uzp/dane"), help="cases: <data>/<case>/*.pdf + gold *.json")
     ap.add_argument("--out", type=Path, default=None, help="run folder (default runs/<timestamp>)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N cases")
     ap.add_argument("--cases", type=str, default=None, help="comma-separated case names")
+    ap.add_argument(
+        "--subset",
+        choices=["fast", "scans", "negatives", "all"],
+        default="fast",
+        help="fast = synthetic cases + negatives (seconds) · scans = dane/skany (OCR, minutes) · all",
+    )
     ap.add_argument("--mode", choices=["rules", "llm", "hybrid"], default=None)
     ap.add_argument("--no-run", action="store_true", help="only score an existing --out")
     ap.add_argument("--lenient", action="store_true")
@@ -47,7 +51,7 @@ def main() -> None:
     if not args.data.exists():
         raise SystemExit(f"Brak danych w {args.data} — uruchom: python scripts/fetch_data.py")
 
-    cases = find_cases(args.data)
+    cases = [c for c in find_cases(args.data) if _in_subset(c, args.subset)]
     if args.cases:
         wanted = set(args.cases.split(","))
         cases = [c for c in cases if c in wanted]
@@ -67,8 +71,7 @@ def main() -> None:
         for case in cases:
             for pdf in find_pdfs(args.data / case):
                 res = pipe.process_file(pdf)
-                if res.data is not None:
-                    write_json(output_path_for(pdf, args.data, pred_root), res.data)
+                write_result(output_path_for(pdf, args.data, pred_root), res.data, settings.output.unknown_output)
                 write_json(output_path_for(pdf, args.data, out / "traces", ".trace.json"), res.to_trace())
                 n += 1
         print(f"Przetworzono {n} PDF w {time.perf_counter() - t0:.1f}s")
@@ -78,11 +81,20 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
     Path("runs").mkdir(exist_ok=True)
-    Path("runs/latest_report.json").write_text(
-        json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    Path("runs/latest_report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Raport: {out / 'report.json'}")
     compare_with_baseline(rep, save=args.save_baseline)
+
+
+def _in_subset(case: str, subset: str) -> bool:
+    top = case.replace("\\", "/").split("/")[0]
+    if subset == "scans":
+        return top == "skany"
+    if subset == "negatives":
+        return top == "negatywne"
+    if subset == "fast":
+        return top != "skany"
+    return True
 
 
 def compare_with_baseline(rep: dict, save: bool = False) -> None:

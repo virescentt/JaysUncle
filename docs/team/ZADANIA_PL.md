@@ -4,6 +4,14 @@
 >
 > **Nowy w projekcie? Zacznij od [WPROWADZENIE_PL.md](WPROWADZENIE_PL.md)** — o co chodzi w zadaniu, na przykładach.
 
+## ⚠️ Poprawki po aktualizacji organizatora (21.11, ~16:00)
+
+Szczegóły — na początku [WARIANTY_PL.md](WARIANTY_PL.md).
+- **Polina:** dostawca LLM z serwerami w UE/EOG i **mały** model open-source (mniejszy model → więcej punktów w finale); bezpieczne przekazanie klucza API jury; **równoległe przetwarzanie plików** (teraz idą po kolei).
+- **Sewa:** jury nie będzie miało Tesseracta → porównać na prawdziwych skanach (`--subset scans`) OCR instalowane przez pip: RapidOCR i EasyOCR. Cache OCR jest teraz ważniejszy: przebieg skanów trwa minuty. Syntetyczne skany są drugorzędne — mamy prawdziwe.
+- **Lesza:** klasyfikator nie może przyjmować dokumentów negatywnych (`--subset negatives`, teraz 12 na 12 poprawnie — utrzymać).
+- **Artem:** GUI oficjalnie daje do 10 pkt w finale, ale nadal po normalizatorach.
+
 ## Start dla wszystkich (15 minut)
 
 ```bash

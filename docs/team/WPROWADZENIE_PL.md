@@ -29,7 +29,7 @@ Pliki: [na GitHubie organizatora](https://github.com/Urzad-Zamowien-Publicznych/
 
 ### 2.1. Potwierdzenie przelewu (najprostsze)
 
-Co widzi człowiek w [PDF](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/dane/przyklad_01/potwierdzenie_przelewu.pdf):
+Co widzi człowiek w [PDF](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/dane/przyklad_01/przelew.pdf):
 ```
 POLECENIE PRZELEWU
 Potwierdzenie realizacji polecenia przelewu · Ekobank
@@ -153,10 +153,10 @@ input/                                  output/
 │   ├── odwolanie_nr_1.pdf       ──►    │   ├── odwolanie_nr_1.json
 │   ├── pelnomocnictwo_nr_1.pdf  ──►    │   ├── pelnomocnictwo_nr_1.json
 │   ├── przelew_nr_1.pdf         ──►    │   ├── przelew_nr_1.json
-│   └── ogloszenie_TED.pdf       ──►    │   (nic — to „obcy” dokument)
+│   └── ogloszenie_TED.pdf       ──►    │   └── ogloszenie_TED.json   (pusty plik — „obcy” dokument)
 ```
 - **Typu dokumentu nie poznamy po nazwie pliku**: w teście nazwy mogą być dowolne. Program sam czyta treść i decyduje: „to pełnomocnictwo”.
-- **Obce dokumenty pomijamy.** Organizator dał [„przykład negatywny”](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/szablon-aplikacja/input/case1/negatywny%20przyklad.pdf) — ogłoszenie o zamówieniu z TED. Dla niego nie tworzymy JSON-a.
+- **Obce dokumenty pomijamy.** Organizator dał [„przykład negatywny”](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/szablon-aplikacja/input/case1/negatywny%20przyklad.pdf) — ogłoszenie o zamówieniu z TED. Dla takich dokumentów program zapisuje **pusty plik `.json`** — tak wymaga organizator. Kolejnych 12 takich dokumentów (orzeczenia KIO, ogłoszenia TED/BZP, broszury) jest w [dane/negatywne](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/tree/main/dane/negatywne).
 
 ---
 
@@ -211,7 +211,7 @@ Nasz skrypt `python -m evaluation.run_eval` liczy F1 na 60 sprawach treningowych
 Ten sam przelew z kroku 2.1 przechodzi pięć etapów:
 
 ```
-potwierdzenie_przelewu.pdf
+przelew.pdf
    │
    ▼ 1. INGEST — wyciągamy tekst
    │    Jest warstwa tekstowa → bierzemy ją. Skan → OCR.
@@ -220,7 +220,7 @@ potwierdzenie_przelewu.pdf
    │    Szukamy „znaków rozpoznawczych” każdego typu (opisanych w YAML) i liczymy punkty:
    │      przelew: +10 (jest „polecenie przelewu”, „rachunek odbiorcy”, kwota, IBAN)
    │      pelnomocnictwo: −4    odwolanie: −4
-   │    → to przelew. Jeśli wszyscy mają mało punktów → „obcy dokument”, nie zapisujemy JSON-a.
+   │    → to przelew. Jeśli wszyscy mają mało punktów → „obcy dokument”, zapisujemy pusty JSON.
    │
    ▼ 3. EXTRACT — szukamy wartości pól
    │    Reguły z YAML: pole na_rachunek szukane jest po etykietach
@@ -235,7 +235,7 @@ potwierdzenie_przelewu.pdf
    │    "PL68 4382 2304 …" → "68438223049992295262834736",  "200,00 PLN" → 200.0
    │
    ▼
-output/.../potwierdzenie_przelewu.json   +   traces/.../potwierdzenie_przelewu.trace.json
+output/.../przelew.json                   +   traces/.../przelew.trace.json
                                                (skąd pochodzi każde pole: strona, fragment tekstu,
                                                 metoda, pewność — pokazujemy to w panelu)
 ```

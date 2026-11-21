@@ -29,7 +29,7 @@
 
 ### 2.1. Подтверждение перевода (самый простой)
 
-Что видит человек в [PDF](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/dane/przyklad_01/potwierdzenie_przelewu.pdf):
+Что видит человек в [PDF](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/dane/przyklad_01/przelew.pdf):
 ```
 POLECENIE PRZELEWU
 Potwierdzenie realizacji polecenia przelewu · Ekobank
@@ -153,10 +153,10 @@ input/                                  output/
 │   ├── odwolanie_nr_1.pdf       ──►    │   ├── odwolanie_nr_1.json
 │   ├── pelnomocnictwo_nr_1.pdf  ──►    │   ├── pelnomocnictwo_nr_1.json
 │   ├── przelew_nr_1.pdf         ──►    │   ├── przelew_nr_1.json
-│   └── ogloszenie_TED.pdf       ──►    │   (ничего — это «чужой» документ)
+│   └── ogloszenie_TED.pdf       ──►    │   └── ogloszenie_TED.json   (пустой файл — «чужой» документ)
 ```
 - **Тип документа по имени файла не определить**: в тестах имена могут быть любыми. Программа сама читает содержимое и решает: «это доверенность».
-- **Чужие документы пропускаем.** У организаторов есть [«негативный пример»](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/szablon-aplikacja/input/case1/negatywny%20przyklad.pdf) — объявление о тендере из TED. Для него JSON создавать не нужно.
+- **Чужие документы пропускаем.** У организаторов есть [«негативный пример»](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/blob/main/szablon-aplikacja/input/case1/negatywny%20przyklad.pdf) — объявление о тендере из TED. Для таких документов программа пишет **пустой файл `.json`** — так требуют организаторы. Ещё 12 таких документов (решения KIO, объявления TED/BZP, брошюры) лежат в [dane/negatywne](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026/tree/main/dane/negatywne).
 
 ---
 
@@ -211,7 +211,7 @@ input/                                  output/
 Тот же перевод из шага 2.1 проходит пять этапов:
 
 ```
-potwierdzenie_przelewu.pdf
+przelew.pdf
    │
    ▼ 1. INGEST — достаём текст
    │    Есть текстовый слой → берём его. Скан → OCR.
@@ -220,7 +220,7 @@ potwierdzenie_przelewu.pdf
    │    Ищем «приметы» каждого типа (они описаны в YAML) и считаем баллы:
    │      przelew: +10 (есть «polecenie przelewu», «rachunek odbiorcy», сумма, IBAN)
    │      pelnomocnictwo: −4    odwolanie: −4
-   │    → это przelew. Если у всех мало баллов → «чужой документ», JSON не пишем.
+   │    → это przelew. Если у всех мало баллов → «чужой документ», пишем пустой JSON.
    │
    ▼ 3. EXTRACT — ищем значения полей
    │    Правила из YAML: поле na_rachunek ищется после меток
@@ -235,7 +235,7 @@ potwierdzenie_przelewu.pdf
    │    "PL68 4382 2304 …" → "68438223049992295262834736",  "200,00 PLN" → 200.0
    │
    ▼
-output/.../potwierdzenie_przelewu.json   +   traces/.../potwierdzenie_przelewu.trace.json
+output/.../przelew.json                   +   traces/.../przelew.trace.json
                                                (откуда взято каждое поле: страница, кусок текста,
                                                 метод, уверенность — показываем в панели)
 ```

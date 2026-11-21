@@ -52,9 +52,7 @@ def build_system_prompt(spec: DocTypeSpec, registry: Registry) -> str:
 def extract_llm(doc: Document, spec: DocTypeSpec, registry: Registry, llm) -> list[Candidate]:
     schema = spec.json_schema(registry.dictionaries, for_llm=True)
     user = f"Typ dokumentu: {spec.name}\n\nTreść dokumentu:\n{build_context(doc, spec)}"
-    data = llm.complete_json(
-        system=build_system_prompt(spec, registry), user=user, schema=schema, name=spec.id
-    )
+    data = llm.complete_json(system=build_system_prompt(spec, registry), user=user, schema=schema, name=spec.id)
     return [
         Candidate(path=path, value=value, method="llm", confidence=CONF_LLM)
         for path, value in flatten(data).items()

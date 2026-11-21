@@ -113,11 +113,7 @@ class LLMClient:
                 }
             elif self.mode in ("json_schema", "json_object"):
                 kwargs["response_format"] = {"type": "json_object"}
-            if (
-                self.mode == "prompt"
-                and schema is not None
-                and not messages[0]["content"].endswith("</schema>")
-            ):
+            if self.mode == "prompt" and schema is not None and not messages[0]["content"].endswith("</schema>"):
                 messages[0]["content"] += "\n\nOdpowiedz wyłącznie JSON-em zgodnym ze schematem:\n<schema>\n"
                 messages[0]["content"] += json.dumps(schema, ensure_ascii=False) + "\n</schema>"
             try:

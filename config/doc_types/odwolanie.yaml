@@ -21,6 +21,9 @@ classification:
     - { pattern: 'wnosz\w* (o |odwołanie)', weight: 1 }
     - { pattern: 'art\.\s*513', weight: 1 }
   negative_signals:
+    # orzeczenia KIO, decyzje, materiały szkoleniowe — dużo słów „odwołanie/odwołujący”, ale to nie odwołanie
+    - { pattern: '^\s*(WYROK|POSTANOWIENIE|DECYZJA)\b', weight: 5, scope: head, case_sensitive: true }
+    - { pattern: 'sygn\.?\s*akt', weight: 3, scope: head }
     - { pattern: '^\s*pełnomocnictwo( procesowe)?\s*$', weight: 4, scope: head }
     - { pattern: 'potwierdzenie (wykonania |realizacji )?(polecenia )?przelewu', weight: 4 }
 

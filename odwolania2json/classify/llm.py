@@ -16,9 +16,7 @@ from odwolania2json.spec import Registry
 log = logging.getLogger(__name__)
 
 
-def classify_llm(
-    doc: Document, registry: Registry, llm, head_chars: int = 3000
-) -> ClassificationResult | None:
+def classify_llm(doc: Document, registry: Registry, llm, head_chars: int = 3000) -> ClassificationResult | None:
     classes = "\n".join(
         f'- "{dt.id}": {dt.name}. {(dt.classification.description or dt.description).strip()}'
         for dt in registry.doc_types.values()

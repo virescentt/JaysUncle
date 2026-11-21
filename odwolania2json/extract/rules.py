@@ -52,9 +52,7 @@ def extract_rules(doc: Document, spec: DocTypeSpec) -> list[Candidate]:
             m = _search(pattern, text, field.case_sensitive)
             if not m:
                 continue
-            value = (
-                m.group("value") if "value" in m.groupdict() else (m.group(1) if m.groups() else m.group(0))
-            )
+            value = m.group("value") if "value" in m.groupdict() else (m.group(1) if m.groups() else m.group(0))
             snippet = text[max(0, m.start() - 40) : m.end() + 40]
             page = 1 if text is first else _page_of(doc, full, m.start())
             out.append(Candidate(path, value.strip(), "rules:pattern", CONF_PATTERN, Evidence(page, snippet)))

@@ -16,3 +16,16 @@ def output_path_for(pdf: Path, input_root: Path, output_root: Path, suffix: str 
 def write_json(path: Path, data: Any, indent: int = 2) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=indent, default=str) + "\n", encoding="utf-8")
+
+
+def write_result(path: Path, data: dict | None, unknown_output: str = "empty_file", indent: int = 2) -> None:
+    """Write the canonical JSON, or the 'unrecognised document' marker (organizer README: empty .json file)."""
+    if data is not None:
+        write_json(path, data, indent)
+    elif unknown_output == "empty_file":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    elif unknown_output == "empty_object":
+        write_json(path, {}, indent)
+    elif path.exists():
+        path.unlink()  # "none": no file (and no stale result from a previous run)

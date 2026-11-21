@@ -51,6 +51,16 @@
       "problemMatcher": []
     },
     {
+      "label": "Eval: skany organizatora (OCR, kilka minut)",
+      "detail": "30 prawdziwych skanów z dane/skany — główny pomiar jakości OCR.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe" },
+      "args": ["-m", "evaluation.run_eval", "--subset", "scans"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "Eval: zapisz baseline (uruchom na master)",
       "detail": "Zapisuje wynik jako punkt odniesienia (runs/baseline_report.json). Rób to na świeżym master przed rozpoczęciem pracy.",
       "type": "process",

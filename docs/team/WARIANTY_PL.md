@@ -2,6 +2,21 @@
 
 > Dla zespołu: Polina, Sewa, Artem, Lesza · 21.11.2026 · Wersja rosyjska: [WARIANTY_RU.md](WARIANTY_RU.md)
 
+## ⚠️ Aktualizacja od organizatora (21.11, ~16:00) — przeczytać najpierw
+
+Organizator uzupełnił README i dane. Co się zmieniło:
+
+1. **Maszyna jury:** laptop biurowy — 16 GB RAM, Intel i7, bez GPU. LLM tylko przez API, a **rozwiązanie oddajemy razem z naszym kluczem API**. Dostawca musi przetwarzać dane na serwerach w **UE/EOG** i mieć to w polityce prywatności. → Amerykańskie Groq / Cerebras / OpenRouter odpadają. Kandydaci: Mistral AI, Scaleway, OVHcloud (sprawdzić aktualne modele). Model nadal musi być open-source.
+2. **Finał (50% „elastyczność”) liczony teraz tak:** 1–20 pkt za wielkość modelu — **im mniejszy model, tym więcej punktów**; 1–20 — łatwość dodawania nowych typów dokumentów; 1–10 — dodatkowe funkcje (np. GUI). → Hybryda z naciskiem na reguły i mały model to dokładnie to, czego chcą.
+3. **GUI** oficjalnie daje punkty, ale nie jest wymagane: ważniejsza jest skuteczność ekstrakcji.
+4. **Dokumenty negatywne → pusty plik `.json`**, a nie brak pliku. Już zrobione. Doszedł folder `dane/negatywne/` (12 PDF: orzeczenia KIO, ogłoszenia TED/BZP, broszury); takie pliki są też w niektórych sprawach.
+5. **Prawdziwe skany z wzorcami:** `dane/skany/` — 30 sztuk (10 odwołań, 10 pełnomocnictw, 10 przelewów). To teraz główny pomiar OCR: `python -m evaluation.run_eval --subset scans`.
+6. **Kategoria 12** = „Projektowane postanowienia umowy”. Dodana do słownika.
+7. W dokumentacji potrzebny jest **opis wykorzystanego LLM**.
+8. Na maszynie jury najpewniej **nie będzie Tesseracta** → OCR musi działać z pip (RapidOCR / EasyOCR) albo przez API.
+
+**Pytania do mentorów (§8) — co zostało:** jak dokładnie liczone jest F1; czy jeden PDF może zawierać kilka dokumentów; limit czasu. Nowe: jak przekazać klucz API inaczej niż przez publiczny GitHub; „pusty plik” to 0 bajtów czy `{}`; treść kategorii 6 („Odpowiedzi i wyjaśnienia” w danych vs „Odpowiedzi/wyjaśnienia” w słowniku); numery rachunków z `PL` czy bez (we wzorcu skanu `z_rachunku` ma `PL`, w syntetyku nie). Zadanie prowadzą osoby z UZP: **Robert Król, Mateusz, Dominik Olczak** — nie ma ich na ogólnej liście mentorów, szukać przez Discord albo mentorzy@hacknation.pl.
+
 ## TL;DR
 
 - **Trening na syntetyku, test na prawdziwych sprawach.** Mamy 60 syntetycznych spraw (180 PDF z warstwą tekstową), a ocena idzie na ukrytym zbiorze ≥10 *prawdziwych* spraw. Jedyny prawdziwy przykład w repozytorium organizatora to **skan bez warstwy tekstowej, z czarnymi zamazaniami (anonimizacja)**. Wniosek: OCR jest konieczny, a regexy dopasowane do generatora rozsypią się na prawdziwych dokumentach.

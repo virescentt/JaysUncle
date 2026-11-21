@@ -53,7 +53,8 @@ class LLMSettings(BaseModel):
 class OutputSettings(BaseModel):
     write_traces: bool = True
     traces_dir: str = "traces"
-    skip_unknown: bool = True
+    # Unrecognised document (not one of the classes): organizer README → "zwrócić pusty plik .json"
+    unknown_output: Literal["empty_file", "empty_object", "none"] = "empty_file"
     indent: int = 2
 
 
