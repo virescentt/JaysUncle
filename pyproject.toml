@@ -1,0 +1,18 @@
+# Tylko konfiguracja narzędzi (projekt instalujemy przez requirements.txt).
+[project]
+name = "odwolania2json"
+version = "0.1.0"
+description = "Ekstrakcja danych z dokumentów odwołań KIO do kanonicznego modelu JSON"
+requires-python = ">=3.13"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # typer.Option / fastapi.File in defaults — standard pattern of these libraries

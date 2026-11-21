@@ -1,0 +1,40 @@
+# Uruchomienie:
+#   docker compose run --rm app                      # przetwarza ./input → ./output (jednorazowo)
+#   docker compose up web                            # interfejs webowy: http://localhost:8000
+#   docker compose --profile local-llm up -d ollama  # opcjonalnie: lokalny LLM (CPU), potem:
+#   docker compose exec ollama ollama pull qwen3:8b  #   pobranie modelu open-source
+# W .env ustaw LLM_BASE_URL=http://ollama:11434/v1, jeśli używasz serwisu ollama.
+
+x-app: &app
+  build: .
+  image: odwolania2json:latest
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    - ./input:/app/input
+    - ./output:/app/output
+    - ./traces:/app/traces
+    - ./config:/app/config        # konfiguracja klas dokumentów edytowalna bez przebudowy obrazu
+
+services:
+  app:
+    <<: *app
+    command: ["python", "-m", "odwolania2json", "run", "--input", "input", "--output", "output"]
+
+  web:
+    <<: *app
+    command: ["python", "-m", "odwolania2json", "web", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  ollama: {}

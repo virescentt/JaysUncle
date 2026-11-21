@@ -1,0 +1,35 @@
+<!doctype html>
+<!--
+  PLACEHOLDER UI — minimalny, działający interfejs do testów API.
+  TODO(ui): docelowy design (podgląd PDF z podświetleniem źródeł wartości — PDF.js, lista spraw, edytor klas).
+  Kontrakt API: odwolania2json/api/app.py. Biblioteki trzymamy lokalnie w web/vendor/ (on-premise, bez CDN).
+-->
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Odwołania2JSON</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Odwołania2JSON</h1>
+    <p class="muted" id="health">Łączenie z API…</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. Wgraj dokumenty (PDF)</h2>
+      <form id="upload">
+        <input type="file" id="files" accept="application/pdf" multiple required>
+        <button type="submit">Przetwórz</button>
+      </form>
+      <p class="muted" id="status"></p>
+    </section>
+
+    <section id="results"></section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

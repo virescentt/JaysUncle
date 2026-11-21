@@ -1,0 +1,32 @@
+# Ustawienia potoku. Zmienne środowiskowe (.env) mają pierwszeństwo — patrz .env.example.
+
+ingest:
+  min_chars_per_page: 40      # mniej znaków w warstwie tekstowej → strona traktowana jako skan → OCR
+  ocr_engine: auto            # auto | tesseract | rapidocr | none   (auto: tesseract, a gdy brak — rapidocr)
+  ocr_dpi: 300
+  ocr_lang: pol
+  max_pages: 20               # ile stron maksymalnie czytamy z jednego PDF
+
+classification:
+  head_chars: 1500            # zakres „nagłówka” dla sygnałów ze scope: head
+  min_margin: 2.0             # minimalna przewaga zwycięskiej klasy nad drugą (inaczej: niepewne)
+  use_llm_fallback: true      # niepewna klasyfikacja → zapytaj LLM (jeśli skonfigurowany)
+
+extraction:
+  mode: hybrid                # rules | llm | hybrid
+  min_confidence: 0.5         # pewność poniżej progu → null (precyzja ważniejsza niż zgadywanie)
+  method_priority: [rules, llm, derived]   # przy remisie pewności
+
+llm:
+  temperature: 0.0
+  max_tokens: 2500
+  timeout_s: 120
+  structured_output: json_schema   # json_schema | json_object | prompt  (zależnie od możliwości serwera)
+  max_retries: 2
+  cache_dir: .cache/llm            # cache odpowiedzi — szybkie powtórne przebiegi ewaluacji
+
+output:
+  write_traces: true
+  traces_dir: traces          # ślady ekstrakcji (przejrzystość): skąd pochodzi każda wartość
+  skip_unknown: true          # dokument niesklasyfikowany (np. ogłoszenie TED) → brak pliku JSON
+  indent: 2

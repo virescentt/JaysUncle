@@ -1,0 +1,77 @@
+# =============================================================================
+#  Klasa dokumentu: POTWIERDZENIE PRZELEWU (wpis od odwołania / opłata skarbowa)
+#  Jeden plik YAML = jedna klasa dokumentu. Dodanie klasy NIE wymaga zmian w kodzie.
+#  Opis formatu: docs/NOWA_KLASA_DOKUMENTU.md
+# =============================================================================
+id: przelew
+name: Potwierdzenie przelewu bankowego
+description: >-
+  Potwierdzenie wykonania przelewu bankowego wygenerowane przez bank (np. wpis od odwołania
+  na rachunek UZP albo opłata skarbowa od pełnomocnictwa).
+version: 1
+enabled: true
+
+# --- 1. Rozpoznawanie dokumentu --------------------------------------------
+classification:
+  min_score: 4
+  signals:
+    - { pattern: 'potwierdzenie (wykonania |realizacji )?(polecenia )?przelewu|polecenie przelewu|dowód wykonania przelewu|potwierdzenie (operacji bankowej|transakcji)|potwierdzenie przelewu', weight: 4, scope: head }
+    - { pattern: 'rachunek (odbiorcy|beneficjenta|uznawany)', weight: 2 }
+    - { pattern: 'rachunek (zleceniodawcy|nadawcy|obciążany)|z rachunku', weight: 2 }
+    - { pattern: '\bPL ?\d{2}(?: ?\d{4}){6}\b', weight: 1 }
+    - { pattern: '\bkwota\b', weight: 1 }
+    - { pattern: 'tytuł(em| przelewu)?\b', weight: 1 }
+  negative_signals:
+    - { pattern: '^\s*ODWOŁANIE\s*$', weight: 4, case_sensitive: true }
+    - { pattern: 'udziela\w* pełnomocnictwa', weight: 3 }
+
+# --- 2. Wskazówki dla ekstrakcji LLM ---------------------------------------
+extraction:
+  instructions: |
+    - Przepisuj wartości dokładnie tak, jak w dokumencie; nie zgaduj — brak danych → null.
+    - na_rachunek = rachunek ODBIORCY/beneficjenta; z_rachunku = rachunek ZLECENIODAWCY/nadawcy/obciążany.
+    - Numery rachunków: same cyfry (bez „PL” i spacji).
+    - numer_transakcji: numer referencyjny / identyfikator operacji (NIE numer klienta).
+    - tytul: pełny tytuł/opis przelewu (bez zewnętrznych cudzysłowów).
+
+# --- 3. Struktura wyniku (kanoniczny JSON) ---------------------------------
+output:
+  przelew_bankowy:
+    type: object
+    properties:
+      data_operacji:
+        type: date
+        description: Data wykonania/realizacji przelewu (ISO YYYY-MM-DD).
+        labels: [Data operacji, Data transakcji, Data wykonania, Data realizacji, Data księgowania]
+        normalize: [date_pl]
+      kwota:
+        type: number
+        description: Kwota przelewu w PLN jako liczba (np. 15000.00).
+        labels: [Kwota operacji, Kwota przelewu, Kwota]
+        normalize: [amount_pl]
+      na_rachunek:
+        type: string
+        description: Numer rachunku odbiorcy — same cyfry (26), bez „PL” i spacji.
+        labels: [Rachunek odbiorcy, Rachunek beneficjenta, Rachunek uznawany, Na rachunek]
+        normalize: [account_number]
+        validate: [iban_pl]
+        ground: digits
+      numer_transakcji:
+        type: string
+        description: Numer referencyjny / identyfikator transakcji nadany przez bank (jeśli występuje).
+        labels: [Numer referencyjny, Nr ref., Identyfikator operacji, Numer transakcji operacji, Numer transakcji, ID transakcji]
+        normalize: [strip]
+        ground: exact
+      tytul:
+        type: string
+        description: Tytuł przelewu (pole „Tytuł” / „Tytułem” / „Opis”), dokładnie jak w dokumencie.
+        labels: [Tytuł przelewu, Tytułem, Tytuł, Opis]
+        normalize: [strip_quotes, collapse_whitespace]
+        ground: fuzzy
+      z_rachunku:
+        type: string
+        description: Numer rachunku zleceniodawcy (obciążanego) — same cyfry (26), bez „PL” i spacji.
+        labels: [Rachunek zleceniodawcy, Rachunek nadawcy, Rachunek obciążany, Z rachunku]
+        normalize: [account_number]
+        validate: [iban_pl]
+        ground: digits

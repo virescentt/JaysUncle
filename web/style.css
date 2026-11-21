@@ -1,0 +1,25 @@
+/* PLACEHOLDER styles. TODO(ui): docelowy design. */
+:root {
+  --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #1f4fd8; --ok: #0f7b3e; --warn: #9a6700; --err: #b42318;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11141a; --card: #1a1f29; --text: #e6e8ec; --muted: #9aa3b2; --line: #2a3140;
+          --accent: #7aa2ff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+header, main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+h1 { margin: 8px 0 0; font-size: 24px; }
+h2 { font-size: 17px; margin: 0 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.muted { color: var(--muted); }
+.err { color: var(--err); }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; margin-left: 6px; }
+.badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+pre { background: var(--bg); padding: 12px; border-radius: 8px; overflow: auto; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+details { margin-top: 8px; } summary { cursor: pointer; font-weight: 600; }
+code { font-size: 12px; }

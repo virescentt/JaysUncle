@@ -1,0 +1,31 @@
+# Odwołania2JSON — zależności runtime (Python 3.13+)
+# Wszystkie komponenty open source, licencje permisywne (MIT / BSD / Apache-2.0).
+# Wersje sprawdzone na Python 3.13 (21.11.2026).
+
+# --- PDF: warstwa tekstowa + renderowanie stron ---
+pdfplumber==0.11.11         # MIT — tekst + słowa ze współrzędnymi (podświetlanie źródeł)
+pypdfium2==5.15.2           # Apache-2.0/BSD-3 — renderowanie stron do obrazów (OCR, podgląd w UI)
+pillow==13.0.0              # MIT-CMU — obrazy
+
+# --- OCR (dla skanów) ---
+pytesseract==0.3.13         # Apache-2.0 — wrapper; wymaga binarki Tesseract + języka 'pol'
+rapidocr==3.10.0            # Apache-2.0 — zapasowy OCR instalowany wyłącznie przez pip
+onnxruntime==1.32.0         # MIT — runtime dla rapidocr
+
+# --- Konfiguracja, schematy, walidacja ---
+pydantic==2.14.4            # MIT
+PyYAML==6.0.4               # MIT
+python-dotenv==1.2.4        # BSD-3
+
+# --- LLM: klient dowolnego API zgodnego z OpenAI (model musi być open-source) ---
+openai==3.57.0              # Apache-2.0
+
+# --- Tekst ---
+RapidFuzz==3.14.6           # MIT — dopasowanie rozmyte (weryfikacja wartości w tekście, metryka)
+
+# --- CLI / API / UI ---
+typer==0.29.2               # MIT
+rich==15.0.0                # MIT
+fastapi==0.165.0            # MIT
+uvicorn==0.54.0             # BSD-3
+python-multipart==0.0.34    # Apache-2.0

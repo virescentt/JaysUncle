@@ -1,0 +1,232 @@
+# =============================================================================
+#  Klasa dokumentu: ODWOŁANIE do Prezesa Krajowej Izby Odwoławczej
+#  Jeden plik YAML = jedna klasa dokumentu. Dodanie klasy NIE wymaga zmian w kodzie.
+#  Opisy pól pochodzą z komentarzy w oczekiwane-json/odwolanie.json (UZP).
+# =============================================================================
+id: odwolanie
+name: Odwołanie do KIO
+description: >-
+  Pismo wykonawcy (Odwołującego) do Prezesa Krajowej Izby Odwoławczej zawierające zarzuty wobec
+  czynności lub zaniechań Zamawiającego w postępowaniu o udzielenie zamówienia publicznego.
+version: 1
+enabled: true
+
+classification:
+  min_score: 5
+  signals:
+    - { pattern: '^\s*O ?D ?W ?O ?Ł ?A ?N ?I ?E\s*$', weight: 4, case_sensitive: true }
+    - { pattern: '\bodwołując\w*', weight: 2 }
+    - { pattern: 'krajow\w* izb\w* odwoławcz\w*', weight: 1 }
+    - { pattern: '\bzarzut\w*', weight: 2 }
+    - { pattern: 'wnosz\w* (o |odwołanie)', weight: 1 }
+    - { pattern: 'art\.\s*513', weight: 1 }
+  negative_signals:
+    - { pattern: '^\s*pełnomocnictwo( procesowe)?\s*$', weight: 4, scope: head }
+    - { pattern: 'potwierdzenie (wykonania |realizacji )?(polecenia )?przelewu', weight: 4 }
+
+extraction:
+  max_pages: 4                 # pierwsze strony w całości (tam są dane stron i postępowania)
+  keyword_windows:             # dodatkowe fragmenty z dalszych stron (dla czynności i jej daty)
+    - 'zarzut\w* nr 1'
+    - 'zaskarż\w*'
+    - 'w dniu \d{1,2}'
+  instructions: |
+    - Odwołujący: jeśli odwołanie wnosi konsorcjum, zwróć WYŁĄCZNIE Lidera konsorcjum (jego nazwę, KRS, NIP, REGON).
+    - Nie myl Odwołującego z „Wykonawcą wybranym”, przystępującym ani innymi wykonawcami.
+    - przez-pelnomocnika = 1, jeśli odwołanie wnosi/podpisuje pełnomocnik (radca prawny, adwokat, kancelaria), inaczej 0.
+    - pelnomocnik.imie_nazwisko: PIERWSZY wymieniony pełnomocnik, w mianowniku, bez tytułów (r. pr., adw., mec.).
+    - pelnomocnik.nazwa: nazwa kancelarii / podmiotu zatrudniającego pełnomocnika (często w adresie do korespondencji).
+    - pelnomocnik.mail: adres e-mail kontaktowy pełnomocnika / do korespondencji.
+    - Zamawiający: wszyscy zamawiający. prowadzacy_postepowanie: null gdy zamawiający jest jeden; gdy jest ich więcej —
+      1 dla oznaczonego jako prowadzący postępowanie / lider, 0 dla pozostałych.
+    - czynnosc_powod_id: wybierz ze słownika na podstawie WYŁĄCZNIE PIERWSZEGO zarzutu.
+    - czynnosc_dzien: data czynności (lub zaniechania) zaskarżonej w pierwszym zarzucie.
+    - data i miejscowosc: z linii typu „Miejscowość, dnia …” (nagłówek pisma). Brak takiej linii → null.
+    - numer_bzp tylko dla ogłoszeń w Biuletynie Zamówień Publicznych; numer_ted tylko dla TED / Dz.U. UE.
+
+output:
+  OdwolanieKIO:
+    type: object
+    properties:
+      data:
+        type: date
+        description: >-
+          Data z nagłówka pierwszej strony, z linii typu 'Miejscowość, dnia DD.MM.RRRR' (miesiąc może być
+          zapisany słownie). Brak daty w nagłówku → null.
+        scope: first_page
+        case_sensitive: true
+        patterns:
+          - '^\s*[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+){0,2},?\s+(?:dnia\s+)?(?P<value>\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4})'
+        normalize: [date_pl]
+      czynnosc_dzien:
+        type: date
+        description: >-
+          Data czynności uruchamiającej bieg terminu odwołania dla PIERWSZEGO zarzutu (ISO YYYY-MM-DD).
+          Jeśli brak wiarygodnej daty dla pierwszego zarzutu, zwróć null.
+        normalize: [date_pl]
+      czynnosc_powod_id:
+        type: integer
+        dictionary: czynnosc_powod
+        description: >-
+          Identyfikator powodu odwołania jako liczba całkowita 1-12 (bez zera wiodącego), ustalany WYŁĄCZNIE
+          na podstawie pierwszego zarzutu.
+      czynnosc_opis:
+        type: string
+        derived_from: czynnosc_powod_id
+        dictionary: czynnosc_powod
+        description: Kanoniczny opis zaskarżonej czynności zgodny 1:1 z czynnosc_powod_id (ze słownika).
+      miejscowosc:
+        type: string
+        description: >-
+          Miejscowość z nagłówka pierwszej strony, z linii typu 'X, dnia ...' albo 'X DD.MM.RRRR'. Brak → null.
+        scope: first_page
+        case_sensitive: true
+        patterns:
+          - '^\s*(?P<value>[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+){0,2}),?\s+(?:dnia\s+)?\d{1,2}(?:[./-]\d{1,2}[./-]\d{4}|\s+[a-ząćęłńóśźż]+\s+\d{4})'
+        normalize: [strip]
+        ground: fuzzy
+
+  Odwolujacy:
+    type: array
+    min_items: 1
+    max_items: 1
+    description: Odwołujący (wykonawca wnoszący odwołanie). Przy konsorcjum — tylko Lider konsorcjum.
+    section:
+      start: 'Odwołując\w*\s*:'
+      end: '(Zamawiając\w*\s*(:|\()|Wykonawca wybrany|Przystępując\w*\s*:|dotyczy\s*:|^\s*ODWOŁANIE\s*$)'
+    items:
+      type: object
+      properties:
+        krs:
+          type: string
+          description: KRS Odwołującego lub Lidera konsorcjum podmiotów Odwołujących (jeśli występuje).
+          patterns: ['KRS[:\s]*(?P<value>\d{10})']
+          normalize: [digits_only]
+          validate: [krs]
+          ground: digits
+        nazwa:
+          type: string
+          description: >-
+            Pełna nazwa podmiotu opisanego jako Odwołujący (wykonawca wnoszący odwołanie). Jeśli występuje
+            konsorcjum, podaj nazwę Lidera konsorcjum.
+          normalize: [strip_quotes, collapse_whitespace]
+          ground: fuzzy
+        nip:
+          type: string
+          description: NIP Odwołującego lub Lidera konsorcjum (jeśli występuje), 10 cyfr.
+          patterns: ['NIP[:\s]*(?P<value>\d{3}[- ]?\d{3}[- ]?\d{2}[- ]?\d{2}|\d{10})']
+          normalize: [digits_only]
+          validate: [nip]
+          ground: digits
+        regon:
+          type: string
+          description: REGON Odwołującego lub Lidera konsorcjum (jeśli występuje), 9 lub 14 cyfr.
+          patterns: ['REGON[:\s]*(?P<value>\d{14}|\d{9})']
+          normalize: [digits_only]
+          validate: [regon]
+          ground: digits
+        przez-pelnomocnika:
+          type: integer
+          enum: [0, 1]
+          description: 1 — odwołanie wnosi pełnomocnik, 0 — nie.
+        pelnomocnik:
+          type: object
+          properties:
+            imie_nazwisko:
+              type: string
+              description: Imię i nazwisko (pierwszego) pełnomocnika Odwołującego, w mianowniku, bez tytułów.
+              normalize: [person_name]
+              ground: fuzzy
+            nazwa:
+              type: string
+              description: Nazwa podmiotu zatrudniającego pełnomocnika (np. kancelarii).
+              normalize: [strip_quotes, collapse_whitespace]
+              ground: fuzzy
+            mail:
+              type: string
+              description: Adres e-mail kontaktowy do pełnomocnika.
+              patterns: ['(?P<value>[\w.+-]+@[\w-]+(?:\.[\w-]+)+)']
+              normalize: [email]
+              ground: exact
+
+  Zamawiajacy:
+    type: array
+    min_items: 1
+    description: Zamawiający (jeden lub więcej, gdy postępowanie prowadzą wspólnie).
+    section:
+      start: 'Zamawiając\w*\s*(:|\()'
+      end: '(Odwołując\w*\s*:|Wykonawca wybrany|Przystępując\w*\s*:|dotyczy\s*:|^\s*ODWOŁANIE\s*$)'
+    item_split: '(?m)^\s*\d\)\s*Zamawiając\w*'
+    items:
+      type: object
+      properties:
+        krs:
+          type: string
+          description: KRS Zamawiającego (jeśli jawnie podany przy Zamawiającym).
+          patterns: ['KRS[:\s]*(?P<value>\d{10})']
+          normalize: [digits_only]
+          validate: [krs]
+          ground: digits
+        nazwa:
+          type: string
+          description: Pełna nazwa podmiotu opisanego jako Zamawiający.
+          normalize: [strip_quotes, collapse_whitespace]
+          ground: fuzzy
+        nip:
+          type: string
+          description: NIP Zamawiającego (jeśli jawnie podany przy Zamawiającym).
+          patterns: ['NIP[:\s]*(?P<value>\d{3}[- ]?\d{3}[- ]?\d{2}[- ]?\d{2}|\d{10})']
+          normalize: [digits_only]
+          validate: [nip]
+          ground: digits
+        regon:
+          type: string
+          description: REGON Zamawiającego (jeśli jawnie podany przy Zamawiającym).
+          patterns: ['REGON[:\s]*(?P<value>\d{14}|\d{9})']
+          normalize: [digits_only]
+          validate: [regon]
+          ground: digits
+        prowadzacy_postepowanie:
+          type: integer
+          enum: [0, 1]
+          description: >-
+            null — jeśli zamawiający jest jeden; 1 — jeśli zamawiających jest więcej i ten jest oznaczony jako
+            prowadzący postępowanie / lider; 0 — jeśli zamawiających jest więcej i ten nie jest prowadzącym.
+
+  ZamowieniePubliczne:
+    type: object
+    properties:
+      numer_bzp:
+        type: string
+        description: >-
+          Numer ogłoszenia w BZP (jeśli występuje). Format 'YYYY/BZP ########' (opcjonalnie '/##' dla korekt),
+          bez spacji po normalizacji. NIE wpisuj tu numerów TED.
+        patterns: ['(?P<value>\d{4}\s*/\s*BZP\s*\d{6,9}(?:\s*/\s*\d{1,2})?)']
+        normalize: [bzp]
+        ground: digits
+      numer_postepowania:
+        type: string
+        description: >-
+          Numer referencyjny / nr postępowania / numer wewnętrzny (ID po etykiecie), np. 'ZP.039.2025',
+          'DZP.260.11.2025', 'V.ROZ.2710.125.2025', 'ZSCKR/822/2025'.
+        labels: [nr referencyjny, numer referencyjny, znak sprawy, nr sprawy, numer sprawy, nr postępowania, numer postępowania]
+        patterns:
+          - '(?:nr|numer)\s+(?:referencyjn\w*|postępowania|sprawy)(?:\s+sprawy)?\s*:?\s*(?P<value>[A-Z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+          - 'postępowanie\s+nr\s+(?P<value>[A-Z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+        normalize: [strip]
+        ground: exact
+      numer_ted:
+        type: string
+        description: >-
+          Numer TED (jeśli występuje), zwykle 'NNNNNN-YYYY' (np. '363730-2025'). Może wystąpić jako
+          'YYYY/S ###-NNNNNN' — zapisz jako 'NNNNNN-YYYY'.
+        patterns:
+          - '(?:TED|Dz\.?\s*U\.?\s*UE|Dzienniku Urzędowym Unii Europejskiej)[^\n]{0,80}?(?P<value>\d{4}\s*/\s*S\s*\d{1,3}\s*-\s*\d{5,7}|\d{5,7}\s*-\s*\d{4})'
+        normalize: [ted]
+        ground: digits
+      tytul:
+        type: string
+        description: Tytuł (nazwa) zamówienia lub postępowania, jeśli występuje w dokumencie — bez cudzysłowów.
+        patterns: ['pn\.?\s*:?\s*[„"“](?P<value>[^”"“]{5,500})[”"“]']
+        normalize: [strip_quotes, collapse_whitespace]
+        ground: fuzzy

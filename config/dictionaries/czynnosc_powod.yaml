@@ -1,0 +1,53 @@
+# Słownik powodów odwołania — czynność (lub zaniechanie) Zamawiającego zaskarżona w PIERWSZYM zarzucie.
+# id i opis muszą być zgodne 1:1 z danymi referencyjnymi UZP.
+# hint     — wskazówka dla LLM (kiedy wybrać daną kategorię)
+# keywords — wzorce regex dla ekstraktora regułowego (do uzupełnienia na podstawie danych treningowych)
+id: czynnosc_powod
+description: Powód odwołania ustalany wyłącznie na podstawie pierwszego zarzutu.
+
+entries:
+  - id: 1
+    opis: Decyzja o odrzuceniu oferty
+    hint: Zamawiający ODRZUCIŁ ofertę (zwykle ofertę Odwołującego); zarzut kwestionuje czynność odrzucenia.
+    keywords: ['odrzuceni\w* oferty odwołującego', 'czynnoś\w* odrzucenia']
+  - id: 2
+    opis: Ogłoszenie wyboru oferty
+    hint: Zaskarżony jest wybór najkorzystniejszej oferty (innego wykonawcy) lub ocena ofert prowadząca do wyboru.
+    keywords: ['wyb\w*r\w* (najkorzystniejszej )?oferty']
+  - id: 3
+    opis: Decyzja o wykluczeniu wykonawcy
+    hint: Zamawiający WYKLUCZYŁ wykonawcę (zwykle Odwołującego) z postępowania.
+    keywords: ['wykluczeni\w* odwołującego']
+  - id: 4
+    opis: Publikacja specyfikacji warunków zamówienia (SWZ)
+    hint: Zarzut dotyczy treści SWZ / ogłoszenia opublikowanych na początku postępowania (warunki udziału, kryteria, wzór umowy).
+    keywords: ['treś\w* (SWZ|specyfikacji)', 'publikac\w* (SWZ|ogłoszenia)']
+  - id: 5
+    opis: Modyfikacja treści SWZ
+    hint: Zaskarżona jest ZMIANA (modyfikacja) treści SWZ dokonana w toku postępowania.
+    keywords: ['modyfikac\w* (treści )?SWZ', 'zmian\w* treści SWZ']
+  - id: 6
+    opis: Odpowiedzi i wyjaśnienia do SWZ
+    hint: Zaskarżone są odpowiedzi na pytania wykonawców / wyjaśnienia treści SWZ.
+    keywords: ['wyjaśnie\w* treści SWZ', 'odpowiedz\w* na pytania']
+  - id: 7
+    opis: Zaniechanie odrzucenia oferty
+    hint: Zamawiający NIE odrzucił oferty innego wykonawcy, choć (zdaniem Odwołującego) powinien.
+    keywords: ['zaniechani\w* odrzucenia']
+  - id: 8
+    opis: Zaniechanie wykluczenia wykonawcy
+    hint: Zamawiający NIE wykluczył innego wykonawcy, choć (zdaniem Odwołującego) powinien.
+    keywords: ['zaniechani\w* wykluczenia']
+  - id: 9
+    opis: Decyzja o unieważnieniu postępowania
+    hint: Zamawiający UNIEWAŻNIŁ postępowanie; zarzut kwestionuje unieważnienie.
+    keywords: ['unieważni\w* postępowani\w*']
+  - id: 10
+    opis: Zaniechanie unieważnienia postępowania
+    hint: Zamawiający NIE unieważnił postępowania, choć (zdaniem Odwołującego) powinien.
+    keywords: ['zaniechani\w* unieważnienia']
+  - id: 11
+    opis: Opis przedmiotu zamówienia (OPZ)
+    hint: Zarzut dotyczy opisu przedmiotu zamówienia (OPZ) — parametrów technicznych, zakresu, wymagań co do przedmiotu.
+    keywords: ['opis\w* przedmiotu zamówienia', '\bOPZ\b']
+  # TODO: id 12 nie występuje w danych treningowych — ustalić z mentorami i uzupełnić.
