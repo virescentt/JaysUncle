@@ -27,13 +27,14 @@ classification:
   use_llm_fallback: true      # niepewna klasyfikacja → zapytaj LLM (jeśli skonfigurowany)
 
 extraction:
-  mode: hybrid                # rules | llm | hybrid
+  mode: rules                 # rules | llm | hybrid — domyślnie reguły: F1 0.969 na 30 skanach vs hybryda z Olala 0.942 (docs/RAPORT_JAKOSCI.md)
+  llm_policy: fill_missing    # hybrid: LLM uzupełnia tylko pola puste po regułach (fill_missing) albo konkuruje (compete)
   min_confidence: 0.5         # pewność poniżej progu → null (precyzja ważniejsza niż zgadywanie)
   method_priority: [rules, llm, derived]   # przy remisie pewności
 
 llm:
   temperature: 0.0
-  max_tokens: 2500
+  max_tokens: 8000                 # modele rozumujące (Olala, Qwen3.x) zużywają tokeny na „myślenie”
   timeout_s: 120
   structured_output: json_schema   # json_schema | json_object | prompt  (zależnie od możliwości serwera)
   max_retries: 2

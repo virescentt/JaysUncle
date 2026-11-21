@@ -4,7 +4,7 @@
 
 Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
 
-> Status: **w budowie** (szkielet architektury gotowy, moduły w trakcie implementacji).
+> Status: **działa** — potok PDF → JSON, OCR skanów, panel webowy, 525 testów. Domyślnie **tryb reguł** (bez LLM, bez klucza API, offline) — najlepszy zmierzony wynik; LLM opcjonalnie ([docs/ARCHITEKTURA.md → LLM](docs/ARCHITEKTURA.md#llm)).
 
 ---
 
@@ -22,10 +22,24 @@ input/case1/pelnomocnictwo_nr_1.pdf   →  output/case1/pelnomocnictwo_nr_1.json
 input/case1/inny_dokument.pdf         →  output/case1/inny_dokument.json   (pusty plik — nie należy do żadnej klasy)
 ```
 
+## Wyniki
+
+Pomiar z 21.11.2026 w trybie reguł (bez LLM), metryka F1 po polach ([`evaluation/score.py`](evaluation/score.py)):
+
+| Zbiór | Dokumenty | F1 | Klasyfikacja |
+|---|---|---|---|
+| Prawdziwe skany organizatora (OCR) | 30 | **0.969** (P 0.971, R 0.968) | 30/30 |
+| Sprawy syntetyczne organizatora | 180 (60 spraw) | **1.000** | 180/180 |
+| Dokumenty negatywne (→ pusty `.json`) | 16 | 0 FP | 16/16 |
+
+- Skany wg typu: odwołanie 0.989 · pełnomocnictwo 0.987 · potwierdzenie przelewu 0.878.
+- OCR (lokalny, bez GPU): odnalezione wartości referencji na skanach 0.83 → **0.955** po przejściu na RapidOCR PP-OCRv6 i korektach.
+- Szczegóły, lista pozostałych błędów i sposób odtworzenia: [docs/RAPORT_JAKOSCI.md](docs/RAPORT_JAKOSCI.md). Architektura: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
+
 ## Architektura w skrócie
 
 ```
-PDF ─► INGEST (pdfplumber; skan → OCR Tesseract/RapidOCR)
+PDF ─► INGEST (pdfplumber; skan → lokalny OCR RapidOCR PP-OCRv6)
     ─► CLASSIFY (sygnały z YAML + opcjonalnie LLM)
     ─► EXTRACT (reguły/regex z YAML + LLM ze schematem JSON z YAML)
     ─► MERGE (weryfikacja: wartość musi występować w tekście, sumy kontrolne; niepewne → null)
@@ -35,7 +49,8 @@ PDF ─► INGEST (pdfplumber; skan → OCR Tesseract/RapidOCR)
 - **Klasa dokumentu = jeden plik YAML** w `config/doc_types/` (sygnały rozpoznawania, struktura wyniku, opisy pól, wskazówki ekstrakcji, normalizacja). **Nowa klasa nie wymaga zmian w kodzie** — zob. [docs/NOWA_KLASA_DOKUMENTU.md](docs/NOWA_KLASA_DOKUMENTU.md).
 - Tryby ekstrakcji (`config/settings.yaml` lub `EXTRACTION_MODE` w `.env`): `rules` (bez LLM, offline) · `llm` · `hybrid` (domyślny).
 - LLM: **wyłącznie modele open-source** przez API zgodne z OpenAI. Aplikacja działa na laptopie biurowym (16 GB RAM, Intel i7, bez GPU) — zgodnie z wymaganiami organizatora LLM jest wywoływany przez API dostawcy z serwerami w UE/EOG (klucz w `.env`, nie w repozytorium). Lokalnie można też użyć Ollama / vLLM / llama.cpp.
-- Model LLM: *(do uzupełnienia — nazwa, liczba parametrów, dostawca, lokalizacja serwerów)*.
+- Model LLM, dostawca (OVHcloud AI Endpoints, serwery w UE) i polityka hybrydowa (LLM uzupełnia tylko pola puste po regułach): [docs/ARCHITEKTURA.md → LLM](docs/ARCHITEKTURA.md#llm).
+- Pełny opis potoku, modułów, OCR i bezpieczeństwa: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
 - Wszystkie zależności open source o licencjach permisywnych (MIT / BSD / Apache-2.0).
 
 ## Wymagania
@@ -86,7 +101,7 @@ Klucz API **nie jest** w repozytorium — wpisujemy go do pliku `.env` (kopia `.
 # Model open-source przez API z serwerami w UE (OVHcloud AI Endpoints, Francja)
 LLM_BASE_URL=https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
 LLM_API_KEY=<klucz>
-LLM_MODEL=Olala-v1.0-mini-7A1B   # wybór modelu: w trakcie porównania (patrz docs/team)
+LLM_MODEL=Olala-v1.0-mini-7A1B   # wybór modelu: patrz docs/ARCHITEKTURA.md (sekcja LLM)
 
 EXTRACTION_MODE=hybrid     # rules | llm | hybrid
 OCR_ENGINE=auto            # auto | rapidocr | easyocr | tesseract | none
@@ -124,17 +139,27 @@ Przydatne komendy (`python -m odwolania2json …`):
 | `schema przelew [--json-schema]` | pusty szablon JSON / schemat przekazywany do LLM |
 | `web` | interfejs webowy |
 
+## Panel webowy
+
+`./start.sh web` (Windows: `start.bat web`) → http://localhost:8000 (w Dockerze: `docker compose up web`).
+
+- **Dokumenty** — wgraj PDF-y (przeciągnij i upuść, kilka naraz); dla każdego: rozpoznana klasa i pewność, pola z metodą i pewnością, JSON do skopiowania lub pobrania (dokładnie taki plik, jaki zapisuje CLI), podgląd stron z **podświetlonym źródłem każdej wartości** (także na skanach).
+- **Klasy dokumentów** — edytor YAML klas: **Sprawdź** (błędy z numerami linii) · **Testuj na PDF** (bez zapisywania) · **Zapisz** (do `config/doc_types/`, potok przeładowany od razu). Nowa klasa bez zmian w kodzie — zob. [docs/NOWA_KLASA_DOKUMENTU.md](docs/NOWA_KLASA_DOKUMENTU.md).
+- `ODWOLANIA2JSON_WEB_READONLY=1` wyłącza zapisywanie klas z panelu.
+
 ## Dane treningowe i ewaluacja (F1)
 
 ```bash
 python scripts/fetch_data.py --sample-input 3   # dane UZP → data/uzp/ (+ 3 sprawy do input/)
 python -m evaluation.run_eval                    # 60 spraw syntetycznych + dokumenty negatywne (~20 s)
 python -m evaluation.run_eval --subset scans     # 30 prawdziwych skanów organizatora (OCR, kilka minut)
+python -m evaluation.run_eval --subset negatives # dokumenty negatywne z dane/negatywne
 python -m evaluation.run_eval --mode rules --limit 10
 python scripts/make_scans.py && python -m evaluation.run_eval --data data/scans/dane   # syntetyczne skany
+python scripts/ocr_benchmark.py                  # porównanie konfiguracji OCR na prawdziwych skanach
 ```
 
-Raport: `runs/<czas>/report.json` (F1 ogółem, wg typu dokumentu, wg pola, przykłady błędów). Metryka: porównanie każdego pola z referencją — trafienie TP, brak FN, nadmiarowa/błędna wartość FP.
+Raport: `runs/<czas>/report.json` (F1 ogółem, wg typu dokumentu, wg pola, przykłady błędów). Metryka: porównanie każdego pola z referencją — trafienie TP, brak FN, nadmiarowa/błędna wartość FP. Opis metryki i wyniki: [docs/RAPORT_JAKOSCI.md](docs/RAPORT_JAKOSCI.md).
 
 ## Struktura repozytorium
 
@@ -143,16 +168,16 @@ config/            konfiguracja: settings.yaml, doc_types/*.yaml (klasy), dictio
 odwolania2json/    kod: ingest/ classify/ extract/ normalize/ validate/ llm/ output/ api/ + pipeline.py, cli.py
 web/               interfejs webowy (statyczny HTML/JS, bez kroku budowania)
 evaluation/        metryka F1 i przebieg na zbiorze treningowym
-scripts/           pobieranie danych, generowanie syntetycznych skanów
+scripts/           pobieranie danych, generowanie syntetycznych skanów, benchmark OCR
 tests/             pytest (testy normalizatorów i walidatorów pełnią rolę specyfikacji)
-docs/              dokumentacja (architektura, dodawanie klas, dokumenty zespołu)
+docs/              dokumentacja (architektura, raport jakości, dodawanie klas, dokumenty zespołu)
 input/ output/     foldery wymagane przez organizatora
 ```
 
 ## Testy
 
 ```bash
-pytest -q        # testy-specyfikacje niezaimplementowanych funkcji są pomijane (skipped)
+pytest -q        # 525 testów
 ruff check .
 ```
 
