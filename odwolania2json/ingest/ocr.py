@@ -76,9 +76,6 @@ class TesseractEngine:
     def ocr_page(self, pdf_path: Path, page_index: int, page: Page, settings: IngestSettings) -> Page:
         img = render_page(pdf_path, page_index, settings.ocr_dpi)
         img = preprocess_image(img)
-        page.text = self._pt.image_to_string(
-            img, lang=settings.ocr_lang, config="--psm 3"
-        ).strip()
         data = self._pt.image_to_data(
             img,
             lang=settings.ocr_lang,
@@ -87,6 +84,7 @@ class TesseractEngine:
         )
         page.words = []
         confidences: list[float] = []
+        text_lines: dict[tuple[int, int, int, int], list[str]] = {}
         for i, raw_text in enumerate(data["text"]):
             text = str(raw_text).strip()
             if not text:
@@ -94,6 +92,8 @@ class TesseractEngine:
             confidence = float(data["conf"][i])
             if confidence >= 0:
                 confidences.append(confidence / 100.0)
+            if confidence < 45:
+                continue
             bbox = scaled_bbox(
                 float(data["left"][i]),
                 float(data["top"][i]),
@@ -105,6 +105,17 @@ class TesseractEngine:
                 page.height,
             )
             page.words.append(Word(text, bbox))
+            line_key = (
+                int(data["block_num"][i]),
+                int(data["par_num"][i]),
+                int(data["line_num"][i]),
+                int(data["word_num"][i]),
+            )
+            text_lines.setdefault(line_key[:3], []).append(text)
+        page.text = "\n".join(
+            " ".join(text_lines[key])
+            for key in sorted(text_lines)
+        ).strip()
         page.ocr_confidence = sum(confidences) / len(confidences) if confidences else None
         page.source, page.ocr_engine = "ocr", self.name
         return page

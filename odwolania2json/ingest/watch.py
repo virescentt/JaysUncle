@@ -310,7 +310,7 @@ def fill_canonical_fields(doc_type: str, data: dict, text: str) -> dict:
                         title_parts.append(line.strip())
                 title = " ".join(part for part in title_parts if part)
                 title = re.sub(r"\s+", " ", title).strip()
-                transfer["tytul"] = title or None
+                transfer["tytul"] = title if 5 <= len(title) <= 500 else None
 
     elif doc_type == "pelnomocnictwo":
         principals = data.setdefault("mocodawca", [{}])
