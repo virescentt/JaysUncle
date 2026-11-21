@@ -1,25 +1,43 @@
 """Rule-based extractor driven entirely by the YAML hints of each field.
 
-IMPLEMENTED: `patterns` (leaves outside arrays, with `scope`) and `labels`.
-TODO(rules): 2. `section`  3. arrays + `item_split`  4. named heuristics.
+IMPLEMENTED: `patterns`, `labels`, `section` (objects/arrays), arrays with `item_split`.
+TODO(rules): 4. named heuristics (first-line values already work via a pattern: '\\A\\s*(?P<value>[^\\n]+)').
+
+Semantics:
+  * section.start / section.end: regexes searched (case-insensitive, diacritics folded) inside the parent region;
+    the region starts AFTER the start match and ends BEFORE the end match (or at the parent's end).
+  * item_split: regex marking the BEGINNING of each array item (use a lookahead, e.g. '(?=r\\. ?pr\\.)').
+    No match → the whole region is one item. No item_split → one item.
+  * inside a region, patterns/labels see only the region text ('\\A' = start of region).
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from odwolania2json.models import Candidate, Document, Evidence
 from odwolania2json.normalize.text import fold_diacritics, normalize_for_matching
-from odwolania2json.spec import DocTypeSpec, FieldSpec
+from odwolania2json.paths import join
+from odwolania2json.spec import DocTypeSpec, FieldSpec, Section
 
 CONF_PATTERN = 0.8
 CONF_LABEL = 0.7
-MAX_VALUE_LINES = 5  # multi-line value: at most this many lines after the label
-_UNITS = {"pln", "zl", "eur", "usd", "gbp", "chf"}  # glued to the previous token in column rows
+MAX_VALUE_LINES = 5
+_UNITS = {"pln", "zl", "eur", "usd", "gbp", "chf"}
+
+
+@dataclass
+class _Ctx:
+    doc: Document
+    full: str
+    first: str
+    full_f: str
+    first_f: str
+    all_re: re.Pattern | None
 
 
 def _page_of(doc: Document, text: str, pos: int) -> int | None:
-    """Map a char offset in '\\n\\n'.join(page texts) back to a page number."""
     offset = 0
     for p in doc.pages:
         end = offset + len(normalize_for_matching(p.text))
@@ -33,21 +51,18 @@ def _search(pattern: str, text: str, case_sensitive: bool = False) -> re.Match |
     return re.search(pattern, text, re.MULTILINE | (0 if case_sensitive else re.IGNORECASE))
 
 
-def _evidence(doc: Document, full: str, first: str, text: str, a: int, b: int) -> Evidence:
-    page = 1 if text is first else _page_of(doc, full, a)
+def _evidence(ctx: _Ctx, text: str, a: int, b: int) -> Evidence:
+    page = 1 if text is ctx.first else _page_of(ctx.doc, ctx.full, a)
     return Evidence(page, text[max(0, a - 40) : b + 40])
 
 
 # ----------------------------------------------------------------------------- labels
 def _compile_labels(labels: list[str], case_sensitive: bool = False) -> re.Pattern | None:
-    """One regex for a set of labels. Matched on diacritic-folded text (OCR loses Polish letters);
-    folding is 1:1 per character, so offsets are identical in folded and original text."""
     parts = sorted({lab.strip() for lab in labels if lab and lab.strip()}, key=len, reverse=True)
     if not parts:
         return None
     alts = ["[ \t]+".join(re.escape(w) for w in fold_diacritics(p).split()) for p in parts]
-    flags = 0 if case_sensitive else re.IGNORECASE
-    return re.compile(r"(?<!\w)(?:" + "|".join(alts) + r")(?!\w)", flags)
+    return re.compile(r"(?<!\w)(?:" + "|".join(alts) + r")(?!\w)", 0 if case_sensitive else re.IGNORECASE)
 
 
 def _line_bounds(text: str, pos: int) -> tuple[int, int]:
@@ -67,15 +82,8 @@ def _glue_units(tokens: list[str]) -> list[str]:
 
 
 def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -> tuple[str, int, int] | None:
-    """Value for `field` located via its labels. Returns (value, start, end) in `text` or None.
-
-    Supported layouts (all labels of the whole document class are known → `all_re`):
-      1. "Label: value"                       — value after the colon, same line
-      2. "Label" (end of line) + next line    — the label may follow a short heading: "Płatnik Rachunek obciążany"
-      3. header row with several labels       — "Kwota operacji Data transakcji" / "200,00 PLN 2026-03-21":
-                                                value line is split into columns (only if the counts match)
-    Multi-line values (until the next label / blank line) only for fields normalized with `collapse_whitespace`.
-    """
+    """Value for `field` located via its labels → (value, start, end) in `text`. See layouts in the docstring of
+    the previous version: "Label: value", "Label" + next line(s), header row with several labels."""
     own = _compile_labels(field.labels, field.case_sensitive)
     if own is None:
         return None
@@ -84,7 +92,6 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
     for m in own.finditer(folded):
         ls, le = _line_bounds(folded, m.start())
         before, after = folded[ls : m.start()], folded[m.end() : le]
-        # the label must stand at the start of the line or after a short heading (no digits / punctuation)
         if before.strip() and (len(before.split()) > 3 or re.search(r"[\d:;,]", before)):
             continue
         stripped = after.lstrip()
@@ -94,9 +101,8 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
             if value:
                 return value, vs, le
         elif all_re.sub("", after).strip(" \t:"):
-            continue  # text follows the label without a colon → it's prose, not a label
+            continue
 
-        # value on the following line(s)
         collected: list[tuple[int, int]] = []
         pos, limit = le + 1, (MAX_VALUE_LINES if multiline else 1)
         while pos < len(folded) and len(collected) < limit:
@@ -105,21 +111,21 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
             line = folded[pos:e]
             if line.strip():
                 if all_re.search(line):
-                    break  # next label reached
+                    break
                 collected.append((pos, e))
             elif collected:
-                break  # blank line ends a multi-line value
+                break
             pos = e + 1
         if not collected:
             continue
 
         row = list(all_re.finditer(folded, ls, le))
-        if len(row) > 1:  # header row with several columns
+        if len(row) > 1:
             s, e = collected[0]
             tokens = _glue_units(text[s:e].split())
             idx = next((i for i, h in enumerate(row) if h.start() == m.start()), None)
             if idx is None or len(tokens) != len(row):
-                continue  # ambiguous columns → better no candidate than a wrong one
+                continue
             value = tokens[idx]
             vs = text.find(value, s, e)
             vs = s if vs == -1 else vs
@@ -132,33 +138,82 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
     return None
 
 
-# ----------------------------------------------------------------------------- main
+# ----------------------------------------------------------------------------- regions
+def _region(section: Section | None, folded: str, lo: int, hi: int) -> tuple[int, int] | None:
+    """Region of `section` inside [lo, hi), or None if its start is not found."""
+    if section is None:
+        return lo, hi
+    m = _search(fold_diacritics(section.start), folded[lo:hi])
+    if not m:
+        return None
+    a, b = lo + m.end(), hi
+    if section.end:
+        e = _search(fold_diacritics(section.end), folded[a:hi])
+        if e:
+            b = a + e.start()
+    return a, b
+
+
+def _items(field: FieldSpec, folded: str, lo: int, hi: int) -> list[tuple[int, int]]:
+    if not folded[lo:hi].strip():
+        return []
+    if not field.item_split:
+        return [(lo, hi)]
+    starts = sorted({lo + m.start() for m in re.finditer(fold_diacritics(field.item_split), folded[lo:hi],
+                                                         re.MULTILINE | re.IGNORECASE)})
+    if not starts:
+        return [(lo, hi)]
+    return [(a, starts[i + 1] if i + 1 < len(starts) else hi) for i, a in enumerate(starts)]
+
+
+# ----------------------------------------------------------------------------- walk
+def _leaf(field: FieldSpec, cpath: str, lo: int, hi: int, ctx: _Ctx, out: list[Candidate]) -> None:
+    first_only = field.scope in ("first_page", "head")
+    text, text_f = (ctx.first, ctx.first_f) if first_only else (ctx.full, ctx.full_f)
+    hi = min(hi, len(text))
+    lo = min(lo, hi)  # `first` is a prefix of `full`, so offsets are shared
+    sub, sub_f = text[lo:hi], text_f[lo:hi]
+
+    for pattern in field.patterns:
+        m = _search(pattern, sub, field.case_sensitive)
+        if not m:
+            continue
+        value = m.group("value") if "value" in m.groupdict() else (m.group(1) if m.groups() else m.group(0))
+        ev = _evidence(ctx, text, lo + m.start(), lo + m.end())
+        out.append(Candidate(cpath, value.strip(), "rules:pattern", CONF_PATTERN, ev))
+        break
+
+    if field.labels and ctx.all_re is not None:
+        hit = _from_labels(field, sub, sub_f, ctx.all_re)
+        if hit:
+            value, a, b = hit
+            out.append(Candidate(cpath, value, "rules:label", CONF_LABEL, _evidence(ctx, text, lo + a, lo + b)))
+
+
+def _walk(field: FieldSpec, cpath: str, lo: int, hi: int, ctx: _Ctx, out: list[Candidate]) -> None:
+    if field.type == "object":
+        reg = _region(field.section, ctx.full_f, lo, hi)
+        if reg is None:
+            return
+        for k, child in (field.properties or {}).items():
+            _walk(child, join(cpath, k), *reg, ctx, out)
+    elif field.type == "array":
+        reg = _region(field.section, ctx.full_f, lo, hi)
+        if reg is None:
+            return
+        for i, (a, b) in enumerate(_items(field, ctx.full_f, *reg)):
+            _walk(field.items, f"{cpath}[{i}]", a, b, ctx, out)
+    else:
+        _leaf(field, cpath, lo, hi, ctx, out)
+
+
 def extract_rules(doc: Document, spec: DocTypeSpec) -> list[Candidate]:
     full = normalize_for_matching("\n\n".join(p.text for p in doc.pages))
     first = normalize_for_matching(doc.first_page_text)
-    full_f, first_f = fold_diacritics(full), fold_diacritics(first)
-    leaves = spec.leaf_specs()
-    all_re = _compile_labels([lab for f in leaves.values() for lab in f.labels])
+    all_re = _compile_labels([lab for f in spec.leaf_specs().values() for lab in f.labels])
+    ctx = _Ctx(doc, full, first, fold_diacritics(full), fold_diacritics(first), all_re)
 
     out: list[Candidate] = []
-    for path, field in leaves.items():
-        if "[]" in path:
-            continue  # arrays → TODO 3
-        text, text_f = (first, first_f) if field.scope in ("first_page", "head") else (full, full_f)
-
-        for pattern in field.patterns:
-            m = _search(pattern, text, field.case_sensitive)
-            if not m:
-                continue
-            value = m.group("value") if "value" in m.groupdict() else (m.group(1) if m.groups() else m.group(0))
-            ev = _evidence(doc, full, first, text, m.start(), m.end())
-            out.append(Candidate(path, value.strip(), "rules:pattern", CONF_PATTERN, ev))
-            break
-
-        if field.labels and all_re is not None:
-            hit = _from_labels(field, text, text_f, all_re)
-            if hit:
-                value, a, b = hit
-                ev = _evidence(doc, full, first, text, a, b)
-                out.append(Candidate(path, value, "rules:label", CONF_LABEL, ev))
+    for key, field in spec.output.items():
+        _walk(field, key, 0, len(full), ctx, out)
     return out
