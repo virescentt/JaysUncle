@@ -29,11 +29,18 @@ const currentPayload = () => current()?.payload || null;
 // =================================================================== status indicator (+ technical details popover)
 const MODE_NAMES = { rules: "reguły", llm: "model językowy", hybrid: "reguły + model językowy" };
 
+function llmLabel(h) {
+  if (!h.llm_model) return "brak (tylko reguły)";
+  if (h.llm_status === "unavailable") return `${h.llm_model} — niedostępny (brak klucza lub internetu)`;
+  if (h.llm_status === "standby") return `${h.llm_model} — gotowy dla typów odczytywanych przez model`;
+  return h.llm_model;
+}
+
 function healthDetails(h, error) {
   const rows = h
     ? [
         ["Sposób odczytu danych", MODE_NAMES[h.mode] || h.mode || "—"],
-        ["Model językowy", h.llm_model || "brak (tylko reguły)"],
+        ["Model językowy", llmLabel(h)],
         ["Odczyt skanów (OCR)", h.ocr_engine || "—"],
         ["Typy dokumentów", (h.doc_types || []).map((id) => h.doc_type_names?.[id] || id).join(", ") || "—"],
         ["Zapisywanie typów", h.readonly ? "wyłączone" : "włączone"],
@@ -513,7 +520,7 @@ function sourceHtml(f) {
   return `<span class="src">${where}${where && snip ? " · " : ""}${snip}</span>`;
 }
 
-function moreHtml(f) {
+function moreHtml(f, derived = []) {
   const rows = [];
   if (f.description) rows.push(["Opis pola", esc(f.description)]);
   if (f.method) rows.push(["Metoda", esc(methodLabel(f.method))]);
@@ -529,6 +536,7 @@ function moreHtml(f) {
         .join("")}</ul>`,
     ]);
   rows.push(["Ścieżka w JSON", `<code>${esc(f.path)}</code>`]);
+  for (const d of derived) rows.push([`${esc(fieldLabel(d.path).label)} (ze słownika)`, `${esc(fmtValue(d.value))} · <code>${esc(d.path)}</code>`]);
   return `<details class="field-more"><summary>Szczegóły</summary><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl></details>`;
 }
 
@@ -546,25 +554,55 @@ function renderFields(p) {
     return;
   }
   const onlyFilled = $("#only-filled").checked;
+  // dictionary-derived fields (e.g. opis from powód id) are shown inside their source field, not as own rows
+  const parentOf = (path) => path.slice(0, Math.max(0, path.lastIndexOf(".")));
+  const derivedOf = new Map(); // source path → [derived field]
+  const attached = new Set();
+  for (const f of p.fields) {
+    if (!f.derived_from && f.method !== "derived") continue;
+    const parent = parentOf(f.path);
+    const src = f.derived_from ? (parent ? `${parent}.${f.derived_from}` : f.derived_from) : null;
+    if (src && p.fields.some((x) => x.path === src)) {
+      if (!derivedOf.has(src)) derivedOf.set(src, []);
+      derivedOf.get(src).push(f);
+      attached.add(f);
+    }
+  }
   let html = "";
   let group = null;
   p.fields.forEach((f, i) => {
-    if (onlyFilled && f.value === null) return;
+    if (attached.has(f) || (onlyFilled && f.value === null)) return;
     const { group: g, label } = fieldLabel(f.path);
     if (g !== group) {
       if (group !== null) html += `</ul>`;
       group = g;
       html += `${g ? `<h3 class="field-group">${esc(g)}</h3>` : ""}<ul class="fields">`;
     }
-    const lvl = f.value !== null && f.method && !(f.method === "derived") ? confWord(f.confidence) : "";
+    const derived = (derivedOf.get(f.path) || []).filter((d) => d.value !== null);
+    const extra = derived.map((d) => ` — ${esc(fmtValue(d.value))}`).join("");
+    const tag = derived.length ? `<span class="from-dict">· ze słownika</span>` : "";
+    if (f.value === null && (f.raw_value === null || f.raw_value === undefined)) {
+      // genuinely not found: one quiet line, no details
+      html += `<li class="field empty" data-idx="${i}">
+        <div class="field-quiet"><span class="field-label">${esc(label)}</span><span class="null">nie znaleziono</span></div>
+      </li>`;
+      return;
+    }
+    if (f.method === "derived" && !f.boxes?.length) {
+      // derived without a visible source field: plain line, not clickable
+      html += `<li class="field derived" data-idx="${i}">
+        <div class="field-quiet"><span class="field-label">${esc(label)}</span><span>${esc(fmtValue(f.value))} <span class="from-dict">· ze słownika</span></span></div>
+      </li>`;
+      return;
+    }
+    const lvl = f.value !== null && f.method && f.method !== "derived" ? confWord(f.confidence) : "";
     html += `<li class="field${i === state.activeField ? " active" : ""}${f.value === null ? " empty" : ""}" data-idx="${i}">
-      <button class="field-main" type="button" data-idx="${i}" aria-pressed="${i === state.activeField}"
-        ${f.description ? `title="${esc(f.description)}"` : ""}>
+      <button class="field-main" type="button" data-idx="${i}" aria-pressed="${i === state.activeField}">
         <span class="field-label">${esc(label)}</span>
-        <span class="field-value">${valueHtml(f)}</span>
+        <span class="field-value">${valueHtml(f)}${extra ? `<span class="val-extra">${extra}</span>` : ""} ${tag}</span>
         <span class="field-meta">${sourceHtml(f)}${lvl}</span>
       </button>
-      ${moreHtml(f)}
+      ${moreHtml(f, derived)}
     </li>`;
   });
   if (group !== null) html += `</ul>`;
@@ -601,9 +639,7 @@ function selectField(i, { scrollPage = true, scrollRow = false } = {}) {
       boxes[0].scrollIntoView({ block: "center", inline: "nearest", behavior });
     } else {
       const page = f.evidence?.page;
-      if (page) $(`#pages .page[data-page="${page}"]`)?.scrollIntoView({ block: "start", behavior });
-      if (f.value !== null || f.raw_value !== null)
-        toast(page ? `Wartość pochodzi ze strony ${page} — dokładne miejsce nie jest znane` : "Tej wartości nie da się wskazać na stronie (np. pochodzi ze słownika)");
+      if (page) $(`#pages .page[data-page="${page}"]`)?.scrollIntoView({ block: "start", behavior }); // no exact place → just the page
     }
   }
   if (scrollRow) $(`#fields-panel li.field[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest", behavior });

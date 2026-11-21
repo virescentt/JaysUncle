@@ -3,7 +3,8 @@
 Everything runs locally (on-premise): the panel in web/ is plain HTML/CSS/JS without a build step or CDN.
 
 Endpoints (contract for the frontend — web/):
-  GET    /api/health                  → {"status", "version", "mode", "llm_model", "doc_types": [...], "error"?}
+  GET    /api/health                  → {"status", "version", "mode", "llm_model", "llm_status", "doc_types": [...],
+                                          "error"?}
   GET    /api/doc-types[?all=true]    → [{"id", "name", "description", "fields": [generic paths], "file", "enabled",
                                           "signals"}]   (all=true: every YAML file, also disabled / broken ones)
   POST   /api/process                 → multipart "files" (1..n PDF) → [document payload]
@@ -13,6 +14,8 @@ Endpoints (contract for the frontend — web/):
   GET    /api/doc/{id}/pdf            → the uploaded PDF
   DELETE /api/doc/{id}                → remove the document from the session store
   Class workshop (config/doc_types/*.yaml, no code changes needed for a new class):
+  GET    /api/dictionaries            → [{"id", "description", "file", "entries": [{"id", "opis", "hint", "keywords"}],
+                                          "used_by": [{"doc_type", "name", "fields"}]}]   (read-only viewer)
   GET    /api/doc-types/template      → YAML skeleton of a new class
   GET    /api/doc-types/{id}/yaml     → raw YAML of a class
   POST   /api/doc-types/validate      → body {"yaml": "..."} (or raw YAML text) → {"ok", "id", "name", "errors",
@@ -35,7 +38,9 @@ Document payload: {"id", "filename", "json_filename", "doc_type", "doc_type_name
   "method", "confidence", "evidence": {"page", "snippet", "bbox"}, "candidates" (count), "candidates_detail", "issues",
   "description", "boxes": [{"page", "bbox": [x0, top, x1, bottom], "kind": "value" | "snippet" | "bbox"}]}],
   "pages", "page_count", "page_sizes": [{"number", "width", "height", "source", "ocr_engine", "words"}], "scanned",
-  "errors", "timings", "total_time", "test_doc_type"}.   Coordinates: PDF points, origin top-left (models.BBox).
+  "errors", "timings", "total_time", "test_doc_type", "head_lines" (first text lines)}; fields also carry
+  "derived_from" (sibling field whose value selects the dictionary entry, or null).
+  Coordinates: PDF points, origin top-left (models.BBox).
 
 Configuration: create_app(config_dir=..., mode=...) or env ODWOLANIA2JSON_CONFIG_DIR (default ./config);
 env ODWOLANIA2JSON_WEB_READONLY=1 disables saving classes from the panel.
@@ -362,6 +367,16 @@ def create_app(
         return response
 
     # ------------------------------------------------------------------ status & classes
+    def _llm_status(pipe) -> str:
+        if not pipe.settings.llm.enabled:
+            return "off"
+        if pipe.llm is not None:
+            return "ready"
+        needed = pipe.settings.extraction.mode != "rules" or any(
+            dt.extraction.mode in ("llm", "hybrid") for dt in pipe.registry.doc_types.values()
+        )
+        return "unavailable" if needed else "standby"
+
     @app.get("/api/health")
     def health():
         try:
@@ -373,7 +388,10 @@ def create_app(
             "status": "ok",
             "version": __version__,
             "mode": pipe.settings.extraction.mode,
-            "llm_model": pipe.settings.llm.model if pipe.llm else None,
+            # llm_model = the model configured in .env; llm_status: off (none configured) | ready (in use) |
+            # standby (configured, no class needs it right now) | unavailable (needed, but key / network / model failed)
+            "llm_model": pipe.settings.llm.model if pipe.settings.llm.enabled else None,
+            "llm_status": _llm_status(pipe),
             "doc_types": list(pipe.registry.doc_types),
             "doc_type_names": {k: v.name for k, v in pipe.registry.doc_types.items()},
             "ocr_engine": pipe.settings.ingest.ocr_engine,
@@ -472,6 +490,36 @@ def create_app(
         return FileResponse(
             doc.pdf_path, media_type="application/pdf", filename=doc.filename, content_disposition_type="inline"
         )
+
+    # ------------------------------------------------------------------ dictionaries (read-only)
+    @app.get("/api/dictionaries")
+    def dictionaries():
+        dicts = state.dictionaries()
+        files = {}
+        for f in sorted((state.config_dir / "dictionaries").glob("*.y*ml")):
+            files.setdefault(f.stem, f.name)
+        try:
+            doc_types = state.pipeline().registry.doc_types
+        except HTTPException:
+            doc_types = {}
+        used: dict[str, list[dict[str, Any]]] = {}
+        for dt in doc_types.values():
+            per_dict: dict[str, list[str]] = {}
+            for path, fspec in dt.leaf_specs().items():
+                if fspec.dictionary and not fspec.derived_from:  # derived = the entry's text, not the choice itself
+                    per_dict.setdefault(fspec.dictionary, []).append(path)
+            for dict_id, paths in per_dict.items():
+                used.setdefault(dict_id, []).append({"doc_type": dt.id, "name": dt.name, "fields": paths})
+        return [
+            {
+                "id": d.id,
+                "description": d.description,
+                "file": files.get(d.id),
+                "entries": [{"id": e.id, "opis": e.opis, "hint": e.hint, "keywords": e.keywords} for e in d.entries],
+                "used_by": used.get(d.id, []),
+            }
+            for d in dicts.values()
+        ]
 
     # ------------------------------------------------------------------ class workshop
     @app.get("/api/doc-types/template", response_class=PlainTextResponse)

@@ -64,7 +64,7 @@ def _tree_hash(root: Path) -> str:
 
 def test_health_and_doc_types(client):
     h = client.get("/api/health").json()
-    assert h["status"] == "ok" and h["mode"] == "rules" and h["llm_model"] is None
+    assert h["status"] == "ok" and h["mode"] == "rules" and h["llm_model"] is None and h["llm_status"] == "off"
     assert {"odwolanie", "pelnomocnictwo", "przelew"} <= set(h["doc_types"])
     types = {t["id"]: t for t in client.get("/api/doc-types").json()}
     assert types["przelew"]["file"] == "przelew.yaml"
@@ -276,6 +276,16 @@ def test_enabled_switch_flips_only_that_line(client, config_dir):
     assert client.put("/api/doc-types/nie_ma/enabled", json={"enabled": True}).status_code == 404
     assert client.put("/api/doc-types/Zle-ID/enabled", json={"enabled": True}).status_code == 400
     assert _tree_hash(CONFIG_DIR) == real_before
+
+
+def test_dictionaries_read_only_listing(client):
+    dicts = {d["id"]: d for d in client.get("/api/dictionaries").json()}
+    d = dicts["czynnosc_powod"]
+    assert d["file"] == "czynnosc_powod.yaml" and d["description"]
+    assert len(d["entries"]) >= 10 and all(e["opis"] and isinstance(e["keywords"], list) for e in d["entries"])
+    assert {"doc_type": "odwolanie", "name": "Odwołanie do KIO"}.items() <= d["used_by"][0].items()
+    assert any(p.endswith("czynnosc_powod_id") for p in d["used_by"][0]["fields"])
+    assert client.post("/api/dictionaries", json={}).status_code == 405  # no editing through the API
 
 
 # --------------------------------------------------------------------------- highlight boxes (unit)

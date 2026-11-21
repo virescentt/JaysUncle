@@ -126,6 +126,11 @@
         </div>
         <ul id="class-list" class="class-list" aria-label="Typy dokumentów"></ul>
         <p class="side-note">Przełącznik „Rozpoznawany / Wyłączony” decyduje, czy system rozpoznaje dany typ. Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON.</p>
+        <section class="side-section" aria-labelledby="dict-list-title">
+          <h2 id="dict-list-title">Słowniki</h2>
+          <p class="side-note">Listy wartości, z których system wybiera np. powód odwołania. Tylko do podglądu.</p>
+          <ul id="dict-list" class="dict-list"></ul>
+        </section>
       </aside>
 
       <section class="workshop" id="workshop" aria-labelledby="ws-title">
@@ -145,6 +150,7 @@
             </div>
           </header>
 
+          <div class="wz" id="ws-wizard" hidden></div>
           <div class="ws-placeholder" id="ws-placeholder">
             <p>Wybierz typ dokumentu po lewej, aby go przejrzeć lub zmienić, albo utwórz nowy.</p>
           </div>
@@ -175,6 +181,10 @@
           </div>
         </div>
 
+        <dialog id="dict-dlg" class="cf-dialog dict-dlg" aria-labelledby="dict-title">
+          <form method="dialog" class="cf-dialog-head"><strong id="dict-title">Słownik</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
+          <div class="dict-body" id="dict-body"></div>
+        </dialog>
         <dialog id="ws-preview-dlg" class="cf-dialog" aria-labelledby="ws-preview-title">
           <form method="dialog" class="cf-dialog-head"><strong id="ws-preview-title">Podgląd pliku konfiguracji (YAML)</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
           <pre id="ws-preview-text"></pre>

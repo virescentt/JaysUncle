@@ -4,8 +4,9 @@
 // Pole tekstowe YAML jest zawsze źródłem prawdy dla Sprawdź / Testuj / Zapisz: w trybie formularza zmiany są najpierw
 // zamieniane na YAML (/api/doc-types/dump). Przełączenie bez zmian w formularzu nie zmienia tekstu YAML (komentarze zostają).
 
-import { $, esc, api, toast, fmtValue, trunc, plural, fieldLabel, confWord } from "./util.js";
+import { $, esc, api, toast, fmtValue, trunc, plural, fieldLabel, confWord, humanizeKey } from "./util.js";
 import { buildModel, modelToJson, renderForm, canon } from "./classform.js";
+import { openWizard, closeWizard, wizardOpen, wizardDirty } from "./wizard.js";
 
 const ws = {
   classes: [],
@@ -22,7 +23,7 @@ const ws = {
 const el = {};
 const formJson = () => (ws.form ? modelToJson(ws.form.model) : null);
 const formChanged = () => ws.mode === "form" && !!ws.form && JSON.stringify(formJson().json) !== ws.form.snapshot;
-const isDirty = () => !!ws.current && (el.yaml.value !== ws.current.original || formChanged());
+const isDirty = () => wizardDirty() || (!!ws.current && (el.yaml.value !== ws.current.original || formChanged()));
 const jsonPost = (path, body) =>
   api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const jsonPut = (path, body) =>
@@ -32,7 +33,7 @@ const jsonPut = (path, body) =>
 export function initWorkshop(hooks) {
   Object.assign(ws.hooks, hooks);
   for (const id of ["yaml", "gutter", "check", "test", "test-file", "save", "revert", "new", "title", "file", "dirty", "msg", "result",
-    "form", "editor", "preview", "preview-dlg", "preview-text", "modes", "keys", "mode-toggle", "placeholder", "actions", "readonly-note"])
+    "form", "editor", "preview", "preview-dlg", "preview-text", "modes", "keys", "mode-toggle", "placeholder", "actions", "readonly-note", "wizard"])
     el[id.replaceAll("-", "_")] = $(`#ws-${id}`);
   try {
     ws.mode = localStorage.getItem("ws-mode") === "yaml" ? "yaml" : "form";
@@ -72,6 +73,10 @@ export function initWorkshop(hooks) {
   el.result.addEventListener("click", (e) => {
     if (e.target.closest("[data-open]") && ws.lastTest) ws.hooks.onOpenDocument(ws.lastTest);
   });
+  $("#dict-list").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-dict]");
+    if (b) openDictionary(b.dataset.dict);
+  });
   initEditor();
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) e.preventDefault();
@@ -82,6 +87,7 @@ export function initWorkshop(hooks) {
 export function showWorkshop() {
   if (!el.list) return;
   if (!ws.loaded) refreshClasses();
+  if (!ws.dicts) loadDictionaries();
   loadMeta().catch(() => {});
 }
 
@@ -93,8 +99,10 @@ async function loadMeta() {
 // ------------------------------------------------------------------ form ↔ YAML
 function showMode() {
   const form = ws.mode === "form";
-  const open = !!ws.current;
-  el.placeholder.hidden = open;
+  const wizard = wizardOpen();
+  const open = !!ws.current && !wizard;
+  el.wizard.hidden = !wizard;
+  el.placeholder.hidden = open || wizard;
   el.actions.hidden = !open;
   el.form.hidden = !open || !form || !ws.form;
   el.editor.hidden = !open || (form && !!ws.form);
@@ -240,12 +248,98 @@ async function toggleEnabled(id, btn) {
   }
 }
 
+// ------------------------------------------------------------------ dictionaries (read-only viewer)
+async function loadDictionaries() {
+  const list = $("#dict-list");
+  try {
+    ws.dicts = await api("/api/dictionaries");
+  } catch (e) {
+    list.innerHTML = `<li class="err-text small">${esc(e.message)}</li>`;
+    return;
+  }
+  list.innerHTML = ws.dicts.length
+    ? ws.dicts
+        .map(
+          (d) => `<li><button type="button" class="dict-item" data-dict="${esc(d.id)}">
+            <span>${esc(humanizeKey(d.id))}</span><span class="muted small">${d.entries.length} ${plural(d.entries.length, ["pozycja", "pozycje", "pozycji"])}</span>
+          </button></li>`,
+        )
+        .join("")
+    : `<li class="muted small">Brak słowników.</li>`;
+}
+
+/** Regex keyword → readable phrase(s): 'odrzuceni\w*\s+(?:\w+\s+){0,2}ofert\w*' → "odrzuceni… ofert…". */
+export function humanizePattern(p) {
+  const top = [];
+  let depth = 0;
+  let cur = "";
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === "\\") {
+      cur += c + (p[i + 1] ?? "");
+      i++;
+      continue;
+    }
+    if (c === "(" || c === "[") depth++;
+    if (c === ")" || c === "]") depth--;
+    if (c === "|" && depth === 0) {
+      top.push(cur);
+      cur = "";
+    } else cur += c;
+  }
+  top.push(cur);
+  return top.map((alt) =>
+    alt
+      .replace(/\(\?:\\w\+\\s\+\)\{\d*,?\d*\}/g, " … ")
+      .replace(/\\[wW][*+]?(\{\d*,?\d*\})?/g, "…")
+      .replace(/\\s[*+?]?/g, " ")
+      .replace(/\\b/g, "")
+      .replace(/\[([^\]\\])[^\]]*\]/g, "$1")
+      .replace(/\(\?:/g, "(")
+      .replace(/\\(.)/g, "$1")
+      .replace(/[?*+^$]/g, "")
+      .replace(/\(([^()]*)\)/g, (_, inner) => (inner.includes("|") ? `(${inner.split("|").map((x) => x.trim()).join(" / ")})` : inner))
+      .replace(/\{\d*,?\d*\}/g, "")
+      .replace(/…(\s*…)+/g, "…")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
+function openDictionary(id) {
+  const d = ws.dicts?.find((x) => x.id === id);
+  if (!d) return;
+  const used = d.used_by
+    .map((u) => `${u.fields.map((f) => `„${esc(fieldLabel(f.replace(/\[\]/g, "")).label)}”`).join(", ")} w typie „${esc(u.name)}”`)
+    .join("; ");
+  const rows = d.entries
+    .map(
+      (e) => `<tr>
+        <td class="num">${esc(e.id)}</td>
+        <td><strong>${esc(e.opis)}</strong>${e.hint ? `<div class="muted small">${esc(e.hint)}</div>` : ""}</td>
+        <td>${e.keywords.length ? `<ul class="kw">${e.keywords.flatMap((k) => humanizePattern(k).map((h) => `<li title="${esc(k)}">${esc(h)}</li>`)).join("")}</ul>` : '<span class="muted">—</span>'}</td>
+      </tr>`,
+    )
+    .join("");
+  $("#dict-title").textContent = `Słownik: ${humanizeKey(d.id)}`;
+  $("#dict-body").innerHTML = `
+    ${d.description ? `<p>${esc(d.description)}</p>` : ""}
+    ${used ? `<p class="muted">Na tej podstawie system ustala wartość pola ${used} oraz jego opis.</p>` : ""}
+    <p class="dict-note">Słownik jest tylko do podglądu. Zmiany wprowadza informatyk w pliku słownika.</p>
+    <table class="dict-table">
+      <thead><tr><th scope="col">Nr</th><th scope="col">Opis</th><th scope="col">Słowa kluczowe</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  $("#dict-dlg").showModal();
+}
+
 function confirmDiscard() {
   return !isDirty() || confirm("Masz niezapisane zmiany. Czy na pewno chcesz je porzucić?");
 }
 
 async function openClass(id) {
-  if (ws.current?.id === id || !confirmDiscard()) return;
+  if ((ws.current?.id === id && !wizardOpen()) || !confirmDiscard()) return;
+  closeWizard();
   try {
     const text = await api(`/api/doc-types/${encodeURIComponent(id)}/yaml`);
     const c = ws.classes.find((x) => x.id === id);
@@ -257,17 +351,64 @@ async function openClass(id) {
 
 async function newClass() {
   if (!confirmDiscard()) return;
-  try {
-    const text =
-      ws.mode === "form"
-        ? (await jsonPost("/api/doc-types/dump", { data: friendlyTemplate((await loadMeta()).template) })).yaml
-        : await api("/api/doc-types/template");
-    await setEditor(text, { id: null, file: null, name: null });
-    if (ws.mode === "yaml") el.yaml.focus();
-    toast("Nowy typ dokumentu — uzupełnij nazwę, frazy i pola, potem Testuj i Zapisz", 4000);
-  } catch (e) {
-    showMessage("err", esc(e.message));
-  }
+  ws.current = null;
+  ws.form = null;
+  el.msg.innerHTML = "";
+  el.result.innerHTML = "";
+  el.title.textContent = "Nowy typ dokumentu";
+  el.file.hidden = false;
+  el.file.textContent = "Trzy proste kroki. Szczegóły (wagi, reguły) można ustawić później.";
+  el.dirty.hidden = true;
+  openWizard(el.wizard, {
+    jsonPost,
+    getHealth: ws.hooks.getHealth,
+    onCancel: () => {
+      if (wizardDirty() && !confirm("Porzucić tworzenie nowego typu dokumentu?")) return;
+      closeWizard();
+      el.title.textContent = "Wybierz typ dokumentu z listy";
+      el.file.textContent = "";
+      el.msg.innerHTML = "";
+      el.result.innerHTML = "";
+      showMode();
+    },
+    onFullForm: async (yaml) => {
+      closeWizard();
+      if (ws.mode !== "form") ws.mode = "form";
+      await setEditor(yaml, { id: null, file: null, name: null });
+      ws.current.original = ""; // nothing saved yet → keep the "unsaved" state
+      updateHeader();
+    },
+    onTest: async (file, yaml) => {
+      el.yaml.value = yaml;
+      await test(file, { fromWizard: true });
+    },
+    onSave: saveFromWizard,
+  });
+  renderList();
+  showMode();
+}
+
+async function saveFromWizard(yaml) {
+  if (ws.hooks.getHealth()?.readonly) return toast("Zapisywanie zostało wyłączone przez administratora");
+  el.yaml.value = yaml;
+  const rep = await validate();
+  if (!rep.ok) return showReport(rep);
+  if (ws.classes.some((c) => c.id === rep.id) && !confirm(`Typ dokumentu o identyfikatorze „${rep.id}” już istnieje. Zastąpić go?`)) return;
+  showMessage("info", '<span class="spinner" aria-hidden="true"></span> Zapisuję…');
+  const res = await api(`/api/doc-types/${encodeURIComponent(rep.id)}/yaml`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ yaml }),
+  });
+  closeWizard();
+  await refreshClasses();
+  await ws.hooks.onSaved();
+  await setEditor(yaml, { id: rep.id, file: res.file, name: rep.name });
+  showReport(
+    { errors: [], warnings: res.warnings },
+    `✓ Zapisano nowy typ dokumentu „${esc(rep.name)}”. Kolejne dokumenty będą już rozpoznawane. Szczegóły możesz zmienić poniżej.`,
+  );
+  toast(`Zapisano nowy typ dokumentu „${rep.name}”`, 4000);
 }
 
 /** Template of a new type in plain wording: importance levels Wysoka/Niska instead of odd weights, no example phrases. */
@@ -468,10 +609,10 @@ async function check() {
   }
 }
 
-async function test(file) {
-  if (!ws.current || ws.busy) return;
+async function test(file, { fromWizard = false } = {}) {
+  if ((!ws.current && !fromWizard) || ws.busy) return;
   try {
-    if (!(await syncForm())) return;
+    if (!fromWizard && !(await syncForm())) return;
   } catch (e) {
     return showMessage("err", esc(e.message));
   }

@@ -53,6 +53,7 @@ def build_payload(
         item["candidates_detail"] = [_candidate_detail(cand) for cand in fr.candidates[:MAX_CANDIDATES_SHOWN]]
         fspec = leaf_specs.get(generic(fr.path))
         item["description"] = fspec.description.strip() if fspec else ""
+        item["derived_from"] = fspec.derived_from if fspec else None  # panel shows it next to its source field
         try:
             item["boxes"] = field_boxes(fr, pages_index)
         except Exception:  # noqa: BLE001 — a highlighting problem must never hide the extracted data
@@ -96,5 +97,22 @@ def build_payload(
         "timings": {k: round(v, 3) for k, v in res.timings.items()},
         "total_time": round(sum(res.timings.values()), 3),
         "test_doc_type": test_doc_type,
+        "head_lines": _head_lines(res.document),
     }
     return jsonable_encoder(payload)
+
+
+HEAD_LINES = 25
+
+
+def _head_lines(document) -> list[str]:
+    """First non-empty text lines of the document (panel: pick recognition phrases for a new document type)."""
+    out: list[str] = []
+    for page in document.pages if document is not None else []:
+        for line in (page.text or "").splitlines():
+            line = " ".join(line.split())
+            if len(line) >= 3:
+                out.append(line[:200])
+                if len(out) >= HEAD_LINES:
+                    return out
+    return out

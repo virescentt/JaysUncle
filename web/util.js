@@ -108,6 +108,7 @@ export function humanizeKey(key) {
       const low = w.toLowerCase();
       return WORDS[low] ?? (w === w.toUpperCase() && w.length > 1 ? w : low);
     });
+  if (words.length > 1 && words[words.length - 1] === "ID") words[words.length - 1] = "(id)"; // "powod_id" → "Powód (id)"
   const s = words.join(" ");
   return s ? s[0].toUpperCase() + s.slice(1) : "";
 }
