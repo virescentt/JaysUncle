@@ -256,7 +256,25 @@ def test_put_refused_in_readonly_mode(config_dir, tmp_path):
     with TestClient(app) as c:
         r = c.put("/api/doc-types/nowa_klasa/yaml", json={"yaml": TEMPLATE_YAML.replace("Nowa klasa", "Inna", 1)})
         assert r.status_code == 403
+        assert c.put("/api/doc-types/przelew/enabled", json={"enabled": False}).status_code == 403
     assert _tree_hash(config_dir) == before
+
+
+def test_enabled_switch_flips_only_that_line(client, config_dir):
+    real_before = _tree_hash(CONFIG_DIR)
+    f = config_dir / "doc_types" / "przelew.yaml"
+    original = f.read_text(encoding="utf-8")
+    r = client.put("/api/doc-types/przelew/enabled", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    assert r.json()["active"] is False and "przelew" not in client.get("/api/health").json()["doc_types"]
+    changed = f.read_text(encoding="utf-8")
+    assert changed == original.replace("enabled: true", "enabled: false", 1)  # comments and layout untouched
+    assert client.put("/api/doc-types/przelew/enabled", json={"enabled": True}).status_code == 200
+    assert f.read_text(encoding="utf-8") == original
+    assert client.put("/api/doc-types/przelew/enabled", json={"enabled": "no"}).status_code == 400
+    assert client.put("/api/doc-types/nie_ma/enabled", json={"enabled": True}).status_code == 404
+    assert client.put("/api/doc-types/Zle-ID/enabled", json={"enabled": True}).status_code == 400
+    assert _tree_hash(CONFIG_DIR) == real_before
 
 
 # --------------------------------------------------------------------------- highlight boxes (unit)

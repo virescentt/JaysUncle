@@ -499,6 +499,27 @@ def _atomic_write(target: Path, data: bytes) -> None:
         tmp.unlink(missing_ok=True)
 
 
+_ENABLED_LINE = re.compile(r"^enabled[ \t]*:[ \t]*[^#\r\n]*?([ \t]+#[^\r\n]*)?[ \t]*$", re.MULTILINE)
+_ID_LINE = re.compile(r"^id[ \t]*:[^\r\n]*$", re.MULTILINE)
+
+
+def set_enabled_text(text: str, enabled: bool) -> str:
+    """Flip the top-level `enabled:` of a class YAML textually — comments and formatting stay untouched.
+
+    Without an `enabled:` line one is inserted after the top-level `id:` line (or appended at the end).
+    The caller validates the result (the value must really change — e.g. flow-style YAML is not edited here).
+    """
+    value = "true" if enabled else "false"
+    m = _ENABLED_LINE.search(text)
+    if m:
+        return text[: m.start()] + f"enabled: {value}" + (m.group(1) or "") + text[m.end() :]
+    m = _ID_LINE.search(text)
+    if m:
+        nl = "\r\n" if "\r\n" in text else "\n"
+        return text[: m.end()] + f"{nl}enabled: {value}" + text[m.end() :]
+    return text.rstrip("\r\n") + f"\nenabled: {value}\n"
+
+
 def save_class_yaml(config_dir: Path, doc_id: str, text: str) -> tuple[Path, bytes | None]:
     """Atomically write the YAML of class `doc_id`. Returns (file, previous bytes or None if created).
 

@@ -2,8 +2,8 @@
 // Kontrakt API: odwolania2json/api/app.py. Bez frameworków i bez kroku budowania.
 
 import {
-  $, $$, esc, uid, api, toast, pct, secs, trunc, squash, fmtValue, setClassOrder, badgeHtml,
-  methodHtml, methodLabel, confHtml, classificationMethod, highlightJson, downloadText, copyText,
+  $, $$, esc, uid, api, toast, pct, secs, trunc, squash, fmtValue, setClassOrder, badgeHtml, methodLabel,
+  classificationMethod, highlightJson, downloadText, copyText, plural, fieldLabel, confLevel, confWord,
 } from "./util.js";
 import { initWorkshop, showWorkshop } from "./workshop.js";
 
@@ -18,7 +18,7 @@ const state = {
   activeField: null,
   hoverField: null,
   zoom: 1,
-  sub: "fields",
+  sub: "json",
   tab: "docs",
 };
 let running = 0;
@@ -26,33 +26,73 @@ let running = 0;
 const current = () => state.docs.find((d) => d.key === state.selected) || null;
 const currentPayload = () => current()?.payload || null;
 
-// =================================================================== health line
+// =================================================================== status indicator (+ technical details popover)
+const MODE_NAMES = { rules: "reguły", llm: "model językowy", hybrid: "reguły + model językowy" };
+
+function healthDetails(h, error) {
+  const rows = h
+    ? [
+        ["Sposób odczytu danych", MODE_NAMES[h.mode] || h.mode || "—"],
+        ["Model językowy", h.llm_model || "brak (tylko reguły)"],
+        ["Odczyt skanów (OCR)", h.ocr_engine || "—"],
+        ["Typy dokumentów", (h.doc_types || []).map((id) => h.doc_type_names?.[id] || id).join(", ") || "—"],
+        ["Zapisywanie typów", h.readonly ? "wyłączone" : "włączone"],
+        ["Wersja programu", h.version || "—"],
+      ]
+    : [["Błąd", error || "brak połączenia"]];
+  return `<h2 class="pop-title">Szczegóły techniczne</h2><dl class="pop-list">${rows
+    .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`)
+    .join("")}</dl>`;
+}
+
 export async function loadHealth() {
   const box = $("#health");
   const text = $("#health-text");
+  const pop = $("#health-pop");
   try {
     const h = await api("/api/health");
     state.health = h;
     if (h.status !== "ok") {
       box.className = "health error";
-      text.textContent = `Błąd konfiguracji: ${h.error}`;
-      box.title = h.error || "";
+      text.textContent = "Błąd konfiguracji";
+      pop.innerHTML = healthDetails(null, h.error);
       return h;
     }
     setClassOrder(h.doc_types);
     box.className = "health ok";
-    text.innerHTML =
-      `tryb: <b>${esc(h.mode)}</b> · LLM: <b>${esc(h.llm_model ?? "brak")}</b> · ` +
-      `klasy: <b>${h.doc_types.map(esc).join(", ") || "—"}</b>`;
-    box.title = `Tryb ekstrakcji: ${h.mode}\nModel LLM: ${h.llm_model ?? "brak (tylko reguły)"}\nOCR: ${h.ocr_engine}\nKlasy: ${h.doc_types.join(", ")}`;
+    const n = h.doc_types.length;
+    text.innerHTML = `Gotowe <span class="health-sub">· ${n} ${plural(n, ["typ dokumentu", "typy dokumentów", "typów dokumentów"])}</span>`;
+    pop.innerHTML = healthDetails(h);
     return h;
   } catch (e) {
     state.health = null;
     box.className = "health error";
-    text.textContent = "API niedostępne — uruchom ./start.sh web";
-    box.title = e.message;
+    text.textContent = "Brak połączenia z serwerem";
+    pop.innerHTML = healthDetails(null, e.message);
     return null;
   }
+}
+
+function initHealth() {
+  const btn = $("#health-info");
+  const pop = $("#health-pop");
+  const toggle = (open) => {
+    pop.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggle(pop.hidden);
+  });
+  document.addEventListener("click", (e) => {
+    if (!pop.hidden && !pop.contains(e.target)) toggle(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !pop.hidden) {
+      toggle(false);
+      btn.focus();
+    }
+  });
 }
 
 // =================================================================== tabs + theme
@@ -182,13 +222,8 @@ function removeDoc(key) {
 function initUpload() {
   const zone = $("#dropzone");
   const input = $("#file-input");
-  zone.addEventListener("click", () => input.click());
-  zone.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      input.click();
-    }
-  });
+  zone.addEventListener("click", () => input.click()); // the whole zone is clickable; the button inside is the keyboard target
+  $("#add-files").addEventListener("click", () => input.click());
   input.addEventListener("change", () => {
     addFiles(input.files);
     input.value = "";
@@ -225,6 +260,7 @@ function initUpload() {
     state.selected = null;
     renderDocList();
     renderDetail();
+    if (!state.docs.length) $("#pick-files").focus();
   });
 }
 
@@ -237,34 +273,44 @@ export function openPayload(payload) {
 }
 
 // =================================================================== document list
-function docMeta(d) {
-  if (d.status === "queued") return `<span>w kolejce…</span>`;
-  if (d.status === "processing") return `<span class="spinner" aria-hidden="true"></span><span>przetwarzanie…</span>`;
-  if (d.status === "error") return `<span class="err-text">${esc(d.error)}</span>`;
+function docStatus(d) {
+  if (d.status === "queued") return { cls: "wait", text: "W kolejce…" };
+  if (d.status === "processing") return { cls: "wait", text: "Przetwarzanie…", spin: true };
+  if (d.status === "error") return { cls: "err", text: "Błąd" };
   const p = d.payload;
-  const parts = [badgeHtml(p.doc_type, p.doc_type_name)];
-  if (p.doc_type) parts.push(`<span title="pewność klasyfikacji">${pct(p.confidence)}</span>`);
-  if (p.scanned) parts.push(`<span class="flag" title="skan — tekst odczytany przez OCR">OCR</span>`);
-  if (p.test_doc_type) parts.push(`<span class="flag test" title="wynik testu niezapisanej klasy">TEST</span>`);
-  if (p.errors?.length) parts.push(`<span class="err-text" title="${esc(p.errors.join("\n"))}">⚠ błąd</span>`);
-  parts.push(`<span title="czas przetwarzania">${secs(p.total_time)}</span>`);
-  return parts.join("");
+  if (p.errors?.length) return { cls: "err", text: "Błąd odczytu" };
+  if (!p.doc_type) return { cls: "none", text: "Nie rozpoznano — pusty plik JSON" };
+  return { cls: "ok", text: "Rozpoznano" };
+}
+
+function docTypeLine(d) {
+  if (d.status === "error") return `<span class="err-text">${esc(d.error)}</span>`;
+  if (d.status !== "done") return "";
+  const p = d.payload;
+  if (!p.doc_type) return `<span class="muted">Nieznany rodzaj dokumentu</span>`;
+  const extra = [p.scanned ? "skan" : "", p.test_doc_type ? "test" : ""].filter(Boolean).join(" · ");
+  return `<span class="doc-type">${esc(p.doc_type_name || p.doc_type)}</span>${extra ? `<span class="muted"> · ${extra}</span>` : ""}`;
 }
 
 function renderDocList() {
+  const has = state.docs.length > 0;
+  $("#docs-empty").hidden = has;
+  $("#docs-work").hidden = !has;
   $("#doc-count").textContent = state.docs.length;
-  $("#clear-docs").hidden = !state.docs.length;
+  $("#clear-docs").hidden = !has;
   $("#doc-list").innerHTML = state.docs
-    .map(
-      (d) => `<li>
+    .map((d) => {
+      const st = docStatus(d);
+      return `<li>
         <button class="doc-item${d.key === state.selected ? " active" : ""}" data-key="${d.key}" type="button"
-          aria-current="${d.key === state.selected}">
+          aria-current="${d.key === state.selected ? "true" : "false"}">
           <span class="doc-name" title="${esc(d.filename)}">${esc(d.filename)}</span>
-          <span class="doc-meta">${docMeta(d)}</span>
+          <span class="doc-type-line">${docTypeLine(d)}</span>
+          <span class="status ${st.cls}">${st.spin ? '<span class="spinner" aria-hidden="true"></span>' : ""}${esc(st.text)}</span>
         </button>
         <button class="doc-remove" data-remove="${d.key}" type="button" title="Usuń z listy" aria-label="Usuń ${esc(d.filename)} z listy">×</button>
-      </li>`,
-    )
+      </li>`;
+    })
     .join("");
 }
 
@@ -291,37 +337,43 @@ function renderHead(d) {
     const msg =
       d.status === "error"
         ? `<div class="alert err">${esc(d.error)}</div>`
-        : `<p class="muted"><span class="spinner" aria-hidden="true"></span> ${d.status === "queued" ? "W kolejce…" : "Przetwarzanie — rozpoznawanie rodzaju dokumentu i ekstrakcja pól…"}</p>`;
+        : `<p class="muted"><span class="spinner" aria-hidden="true"></span> ${d.status === "queued" ? "Czeka w kolejce…" : "Trwa rozpoznawanie dokumentu i odczyt danych…"}</p>`;
     head.innerHTML = `<div class="doc-title"><h2>${esc(d.filename)}</h2></div>${msg}`;
     return;
   }
   const p = d.payload;
-  const ranked = Object.entries(p.scores || {}).sort((a, b) => b[1] - a[1]);
-  const scores = ranked
-    .map(([k, v], i) => `<span class="${i === 0 && p.doc_type === k ? "win" : ""}">${esc(k)} ${v > 0 ? "+" : ""}${v}</span>`)
-    .join("");
   const filled = p.fields.filter((f) => f.value !== null).length;
-  const facts = [];
-  if (p.doc_type) facts.push(`<span>pewność klasyfikacji <b>${pct(p.confidence)}</b> (${esc(classificationMethod(p.method))})</span>`);
-  facts.push(`<span>stron <b>${p.pages}</b>${p.page_count > p.pages ? ` z ${p.page_count}` : ""}${p.scanned ? " · <b>skan (OCR)</b>" : ""}</span>`);
-  if (p.doc_type) facts.push(`<span>pola wypełnione <b>${filled}</b> z ${p.fields.length}</span>`);
-  facts.push(`<span>czas <b>${secs(p.total_time)}</b></span>`);
-  if (ranked.length) facts.push(`<span title="punkty sygnałów klasyfikacji (YAML)">punkty: <span class="scores">${scores}</span></span>`);
+  const ranked = Object.entries(p.scores || {}).sort((a, b) => b[1] - a[1]);
+  const names = state.health?.doc_type_names || {};
+  const lvl = confLevel(p.confidence);
+  const st = docStatus(d);
+  const pages = p.pages;
+  const tech = [
+    p.doc_type && lvl ? `<div><dt>Pewność rozpoznania</dt><dd>${lvl.text} (${pct(p.confidence)}, ${esc(classificationMethod(p.method))})</dd></div>` : "",
+    p.doc_type ? `<div><dt>Znalezione pola</dt><dd>${filled} z ${p.fields.length}</dd></div>` : "",
+    `<div><dt>Strony</dt><dd>${pages}${p.page_count > p.pages ? ` z ${p.page_count}` : ""}${p.scanned ? " (skan)" : ""}</dd></div>`,
+    ranked.length
+      ? `<div><dt>Punkty rozpoznawania</dt><dd>${ranked.map(([k, v]) => `${esc(names[k] || k)}: ${v > 0 ? "+" : ""}${v}`).join(" · ")}</dd></div>`
+      : "",
+    p.reason ? `<div><dt>Uzasadnienie</dt><dd>${esc(p.reason)}</dd></div>` : "",
+    `<div><dt>Czas przetwarzania</dt><dd>${secs(p.total_time)}</dd></div>`,
+  ].join("");
 
   const alerts = [];
-  if (p.errors?.length) alerts.push(`<div class="alert err">${p.errors.map(esc).join("<br>")}</div>`);
-  if (!p.doc_type && !p.errors?.length)
-    alerts.push(
-      `<div class="alert info">Dokument nie należy do żadnej z obsługiwanych klas (${esc(p.reason || "brak sygnałów")}). Zgodnie z wymaganiami wynikiem jest <b>pusty plik ${esc(p.json_filename)}</b>.</div>`,
-    );
+  if (p.errors?.length) alerts.push(`<div class="alert err" role="alert">${p.errors.map(esc).join("<br>")}</div>`);
   if (p.test_doc_type)
-    alerts.push(`<div class="alert info">Wynik <b>testu</b> klasy „${esc(p.test_doc_type)}” z edytora — konfiguracja nie została zapisana.</div>`);
+    alerts.push(`<div class="alert info">To wynik <b>testu</b> typu dokumentu z edytora — zmiany w typie nie zostały zapisane.</div>`);
   if (p.page_count > p.pages)
-    alerts.push(`<div class="alert warn">Przetworzono pierwsze ${p.pages} z ${p.page_count} stron (limit <code>ingest.max_pages</code>).</div>`);
+    alerts.push(`<div class="alert warn">Odczytano tylko pierwsze ${p.pages} z ${p.page_count} stron (limit stron w ustawieniach).</div>`);
 
   head.innerHTML = `
-    <div class="doc-title"><h2>${esc(p.filename)}</h2>${badgeHtml(p.doc_type, p.doc_type_name, true)}</div>
-    <div class="doc-facts">${facts.join("")}</div>
+    <div class="doc-title">
+      <h2>${esc(p.filename)}</h2>
+      ${p.doc_type ? badgeHtml(p.doc_type, p.doc_type_name, true) : ""}
+      <span class="status ${st.cls}">${esc(st.text)}</span>
+      <span class="spacer"></span>
+      <details class="tech stats"><summary>Statystyki</summary><dl class="tech-list">${tech}</dl></details>
+    </div>
     ${alerts.join("")}`;
 }
 
@@ -343,7 +395,7 @@ function boxesHtml(p, page) {
       const cls = ["hl", `kind-${b.kind}`];
       if (f.value === null) cls.push("rejected");
       if (i === state.activeField) cls.push("active");
-      const label = `${f.path}: ${f.value === null ? `null (odrzucono: ${fmtValue(f.raw_value)})` : fmtValue(f.value)}${b.kind === "snippet" ? " — przybliżone położenie" : ""}`;
+      const label = `${fieldLabel(f.path).label}: ${f.value === null ? `odrzucono niepewną wartość „${fmtValue(f.raw_value)}”` : fmtValue(f.value)}${b.kind === "snippet" ? " (przybliżone położenie)" : ""}`;
       html += `<div class="${cls.join(" ")}" data-idx="${i}" title="${esc(label)}"
         style="left:${((l / w) * 100).toFixed(3)}%;top:${((t / h) * 100).toFixed(3)}%;width:${(((r - l) / w) * 100).toFixed(3)}%;height:${(((btm - t) / h) * 100).toFixed(3)}%"></div>`;
     }
@@ -353,13 +405,11 @@ function boxesHtml(p, page) {
 
 function pageCaption(pg) {
   if (pg.source === "ocr") {
-    const engine = pg.ocr_engine ? ` (${esc(pg.ocr_engine)})` : "";
-    const conf = pg.ocr_confidence !== null && pg.ocr_confidence !== undefined ? `, pewność OCR ${pct(pg.ocr_confidence)}` : "";
-    const words = pg.words ? "" : " — bez współrzędnych słów, podświetlenia niedostępne";
-    return `Strona ${pg.number} · skan, OCR${engine}${conf}${words}`;
+    const words = pg.words ? "" : " — bez zaznaczeń na stronie";
+    return `Strona ${pg.number} · skan odczytany automatycznie${words}`;
   }
-  if (pg.source === "empty") return `Strona ${pg.number} · brak tekstu (OCR niedostępny)`;
-  return `Strona ${pg.number} · warstwa tekstowa PDF`;
+  if (pg.source === "empty") return `Strona ${pg.number} · nie udało się odczytać tekstu`;
+  return `Strona ${pg.number}`;
 }
 
 function renderPages(p) {
@@ -368,10 +418,10 @@ function renderPages(p) {
   wrap.classList.toggle("hide-boxes", !$("#show-all-boxes").checked);
   const located = p.fields.filter((f) => f.boxes?.length).length;
   const info = $("#pages-info");
-  info.textContent = p.page_sizes.length ? `${p.page_sizes.length} str.${p.doc_type ? ` · ${located} pól na stronach` : ""}` : "";
-  info.title = p.doc_type ? `Stron: ${p.page_sizes.length}; pola z położeniem na stronie: ${located} z ${p.fields.length}` : "";
+  const n = p.page_sizes.length;
+  info.textContent = n ? `${n} ${plural(n, ["strona", "strony", "stron"])}` : "";
   if (!p.page_sizes.length) {
-    wrap.innerHTML = `<div class="no-pages">Brak podglądu — nie udało się odczytać dokumentu.</div>`;
+    wrap.innerHTML = `<div class="no-pages">Brak podglądu — nie udało się otworzyć dokumentu.</div>`;
     return;
   }
   const dpi = pageDpi();
@@ -410,7 +460,7 @@ function initPages() {
       if (e.target.tagName !== "IMG") return;
       const div = document.createElement("div");
       div.className = "page-error";
-      div.textContent = "Nie udało się wczytać podglądu strony (sesja wygasła? wgraj plik ponownie)";
+      div.textContent = "Nie udało się wczytać podglądu strony — dodaj plik ponownie.";
       e.target.replaceWith(div);
     },
     true,
@@ -435,32 +485,21 @@ function initPages() {
   $("#show-all-boxes").addEventListener("change", (e) => wrap.classList.toggle("hide-boxes", !e.target.checked));
 }
 
-// =================================================================== detail: field table
-function splitPath(path) {
-  const i = path.lastIndexOf(".");
-  return i < 0 ? { parent: "", leaf: path } : { parent: path.slice(0, i), leaf: path.slice(i + 1) };
-}
-
+// =================================================================== detail: fields (human labels, plain confidence, details on demand)
 function valueHtml(f) {
   // derived = looked up in a dictionary from another field; raw_value is then that field's value (not document text)
   const derived = f.method === "derived";
   if (f.value === null) {
-    let s = `<span class="null">null</span>`;
+    let s = `<span class="null">Nie znaleziono</span>`;
     const shown = f.raw_value !== null && f.raw_value !== undefined ? esc(trunc(squash(fmtValue(f.raw_value)), 70)) : "";
-    if (shown && derived) s += `<span class="rejected">brak pozycji słownika dla wartości „${shown}”</span>`;
-    else if (shown && f.method)
-      s += `<span class="rejected" title="${esc((f.issues || []).join("\n"))}">odrzucono „${shown}” — pewność ${pct(f.confidence)} poniżej progu</span>`;
+    if (shown && derived) s += `<span class="rejected">brak pozycji w słowniku dla „${shown}”</span>`;
+    else if (shown && f.method) s += `<span class="rejected">pominięto niepewną wartość „${shown}”</span>`;
     return s;
   }
-  const raw = f.raw_value !== null && f.raw_value !== undefined && squash(fmtValue(f.raw_value)) !== fmtValue(f.value) ? squash(fmtValue(f.raw_value)) : "";
-  let s = `<span${raw ? ` title="${derived ? "ze słownika, dla wartości" : "w dokumencie"}: ${esc(raw)}"` : ""}>${esc(fmtValue(f.value))}</span>`;
-  if (f.issues?.length) s += `<span class="issues" title="${esc(f.issues.join("\n"))}" aria-label="uwagi">⚠</span>`;
-  if (f.candidates > 1 && f.candidates_detail?.length) {
-    const items = f.candidates_detail
-      .map((c) => `<li>${esc(trunc(fmtValue(c.value), 80))} — ${esc(methodLabel(c.method))}, ${pct(c.confidence)}${c.page ? `, str. ${c.page}` : ""}</li>`)
-      .join("");
-    s += `<details><summary>${f.candidates} kandydatów</summary><ul>${items}</ul></details>`;
-  }
+  let v = f.value;
+  if (typeof v === "boolean") v = v ? "tak" : "nie";
+  let s = `<span class="val">${esc(fmtValue(v))}</span>`;
+  if (f.issues?.length) s += `<span class="issues" title="${esc(f.issues.join("\n"))}">⚠ do sprawdzenia</span>`;
   return s;
 }
 
@@ -468,54 +507,68 @@ function sourceHtml(f) {
   const ev = f.evidence;
   const boxes = f.boxes || [];
   const page = boxes[0]?.page ?? ev?.page;
-  if (!page && !ev?.snippet) return `<span class="muted">—</span>`;
-  let s = page ? `<span class="pg">str. ${page}</span>` : "";
-  if (boxes.length) {
-    const approx = boxes[0].kind === "snippet";
-    s += ` <span class="loc" title="${approx ? "przybliżone położenie (fragment tekstu)" : "dokładne położenie wartości na stronie"}">${approx ? "≈ fragment" : "◉ na stronie"}</span>`;
-  }
-  if (ev?.snippet) s += `<span class="snip" title="${esc(squash(ev.snippet))}">„${esc(trunc(squash(ev.snippet), 120))}”</span>`;
-  return s;
+  if (!page && !ev?.snippet) return f.method === "derived" && f.value !== null ? `<span class="src">Ze słownika</span>` : "";
+  const where = page ? `Strona ${page}` : "";
+  const snip = ev?.snippet ? `<span class="snip">„${esc(trunc(squash(ev.snippet), 110))}”</span>` : "";
+  return `<span class="src">${where}${where && snip ? " · " : ""}${snip}</span>`;
+}
+
+function moreHtml(f) {
+  const rows = [];
+  if (f.description) rows.push(["Opis pola", esc(f.description)]);
+  if (f.method) rows.push(["Metoda", esc(methodLabel(f.method))]);
+  if (f.method && f.confidence !== null && f.confidence !== undefined) rows.push(["Pewność", pct(f.confidence)]);
+  const raw = f.raw_value !== null && f.raw_value !== undefined ? squash(fmtValue(f.raw_value)) : "";
+  if (raw && raw !== fmtValue(f.value)) rows.push([f.method === "derived" ? "Wartość źródłowa" : "Tekst w dokumencie", esc(trunc(raw, 200))]);
+  if (f.issues?.length) rows.push(["Uwagi", f.issues.map(esc).join("<br>")]);
+  if (f.candidates > 1 && f.candidates_detail?.length)
+    rows.push([
+      "Inne kandydatury",
+      `<ul>${f.candidates_detail
+        .map((c) => `<li>${esc(trunc(fmtValue(c.value), 80))} — ${esc(methodLabel(c.method))}, ${pct(c.confidence)}${c.page ? `, str. ${c.page}` : ""}</li>`)
+        .join("")}</ul>`,
+    ]);
+  rows.push(["Ścieżka w JSON", `<code>${esc(f.path)}</code>`]);
+  return `<details class="field-more"><summary>Szczegóły</summary><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl></details>`;
 }
 
 function renderFields(p) {
   const panel = $("#fields-panel");
-  $("#sub-fields").innerHTML = `Pola <span class="count">${p.doc_type ? p.fields.filter((f) => f.value !== null).length + "/" + p.fields.length : 0}</span>`;
+  const filled = p.fields.filter((f) => f.value !== null).length;
+  $("#sub-fields").innerHTML = `Pola i źródła${p.doc_type ? ` <span class="count">${filled}/${p.fields.length}</span>` : ""}`;
   $("#only-filled-wrap").hidden = !p.doc_type;
   if (!p.doc_type) {
     panel.innerHTML = `<div class="panel-note">${
       p.errors?.length
         ? "Dokument nie został przetworzony — szczegóły błędu powyżej."
-        : `Dokument nierozpoznany — nie wyodrębniono pól. Uzasadnienie klasyfikacji: <i>${esc(p.reason || "—")}</i>.`
+        : "Dokument nie został rozpoznany, więc nie odczytano z niego danych."
     }</div>`;
     return;
   }
   const onlyFilled = $("#only-filled").checked;
-  let rows = "";
+  let html = "";
   let group = null;
   p.fields.forEach((f, i) => {
     if (onlyFilled && f.value === null) return;
-    const { parent, leaf } = splitPath(f.path);
-    if (parent !== group) {
-      group = parent;
-      if (parent) rows += `<tr class="group"><td colspan="5">${esc(parent.replaceAll(".", " › "))}</td></tr>`;
+    const { group: g, label } = fieldLabel(f.path);
+    if (g !== group) {
+      if (group !== null) html += `</ul>`;
+      group = g;
+      html += `${g ? `<h3 class="field-group">${esc(g)}</h3>` : ""}<ul class="fields">`;
     }
-    const located = f.boxes?.length ? " located" : "";
-    rows += `<tr class="field${i === state.activeField ? " active" : ""}${located}" data-idx="${i}" tabindex="0"
-        aria-label="${esc(`${f.path}: ${fmtValue(f.value)}`)}">
-      <td class="f-path" title="${esc(f.description ? `${f.path} — ${f.description}` : f.path)}"><span class="leaf">${esc(leaf).replace(/[_-]/g, "$&<wbr>")}</span></td>
-      <td class="f-value">${valueHtml(f)}</td>
-      <td>${methodHtml(f.method)}</td>
-      <td>${f.method && !(f.method === "derived" && f.value === null) ? confHtml(f.confidence) : '<span class="muted">—</span>'}</td>
-      <td class="f-src c-src">${sourceHtml(f)}</td>
-    </tr>`;
+    const lvl = f.value !== null && f.method && !(f.method === "derived") ? confWord(f.confidence) : "";
+    html += `<li class="field${i === state.activeField ? " active" : ""}${f.value === null ? " empty" : ""}" data-idx="${i}">
+      <button class="field-main" type="button" data-idx="${i}" aria-pressed="${i === state.activeField}"
+        ${f.description ? `title="${esc(f.description)}"` : ""}>
+        <span class="field-label">${esc(label)}</span>
+        <span class="field-value">${valueHtml(f)}</span>
+        <span class="field-meta">${sourceHtml(f)}${lvl}</span>
+      </button>
+      ${moreHtml(f)}
+    </li>`;
   });
-  panel.innerHTML = rows
-    ? `<table class="fields-table">
-        <colgroup><col class="c-path"><col class="c-value"><col class="c-method"><col class="c-conf"><col class="c-src"></colgroup>
-        <thead><tr><th scope="col">Pole</th><th scope="col">Wartość</th><th scope="col">Metoda</th><th scope="col">Pewność</th><th scope="col" class="c-src">Źródło</th></tr></thead>
-        <tbody>${rows}</tbody></table>`
-    : `<div class="panel-note">Brak wypełnionych pól — odznacz „tylko wypełnione”, aby zobaczyć wszystkie (null).</div>`;
+  if (group !== null) html += `</ul>`;
+  panel.innerHTML = html || `<div class="panel-note">Nie znaleziono żadnej wartości — odznacz „Tylko znalezione”, aby zobaczyć wszystkie pola.</div>`;
 }
 
 function setHover(i) {
@@ -530,7 +583,11 @@ function selectField(i, { scrollPage = true, scrollRow = false } = {}) {
   const p = currentPayload();
   if (!p) return;
   state.activeField = i;
-  for (const tr of $$("#fields-panel tr.field")) tr.classList.toggle("active", +tr.dataset.idx === i);
+  for (const li of $$("#fields-panel li.field")) {
+    const on = +li.dataset.idx === i;
+    li.classList.toggle("active", on);
+    li.querySelector(".field-main")?.setAttribute("aria-pressed", String(on));
+  }
   for (const el of $$("#pages .hl.active")) el.classList.remove("active");
   const boxes = $$(`#pages .hl[data-idx="${i}"]`);
   for (const el of boxes) {
@@ -546,40 +603,34 @@ function selectField(i, { scrollPage = true, scrollRow = false } = {}) {
       const page = f.evidence?.page;
       if (page) $(`#pages .page[data-page="${page}"]`)?.scrollIntoView({ block: "start", behavior });
       if (f.value !== null || f.raw_value !== null)
-        toast(page ? `Wartość pochodzi ze strony ${page} — dokładne położenie nieznane` : "Brak położenia tej wartości w dokumencie (np. wartość wyliczona ze słownika)");
+        toast(page ? `Wartość pochodzi ze strony ${page} — dokładne miejsce nie jest znane` : "Tej wartości nie da się wskazać na stronie (np. pochodzi ze słownika)");
     }
   }
-  if (scrollRow) $(`#fields-panel tr.field[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest", behavior });
+  if (scrollRow) $(`#fields-panel li.field[data-idx="${i}"]`)?.scrollIntoView({ block: "nearest", behavior });
 }
 
 function initFields() {
   const panel = $("#fields-panel");
   panel.addEventListener("click", (e) => {
-    if (e.target.closest("summary, details")) return;
-    const tr = e.target.closest("tr.field");
-    if (tr) selectField(+tr.dataset.idx);
+    const btn = e.target.closest(".field-main");
+    if (btn) selectField(+btn.dataset.idx);
   });
   panel.addEventListener("keydown", (e) => {
-    const tr = e.target.closest("tr.field");
-    if (!tr) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      selectField(+tr.dataset.idx);
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const rows = $$("tr.field", panel);
-      const next = rows[rows.indexOf(tr) + (e.key === "ArrowDown" ? 1 : -1)];
-      if (next) next.focus();
-    }
+    const btn = e.target.closest(".field-main");
+    if (!btn || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+    e.preventDefault();
+    const all = $$(".field-main", panel);
+    const next = all[all.indexOf(btn) + (e.key === "ArrowDown" ? 1 : -1)];
+    if (next) next.focus();
   });
   panel.addEventListener("mouseover", (e) => {
-    const tr = e.target.closest("tr.field");
-    setHover(tr ? +tr.dataset.idx : null);
+    const li = e.target.closest("li.field");
+    setHover(li ? +li.dataset.idx : null);
   });
   panel.addEventListener("mouseleave", () => setHover(null));
   panel.addEventListener("focusin", (e) => {
-    const tr = e.target.closest("tr.field");
-    if (tr) setHover(+tr.dataset.idx);
+    const li = e.target.closest("li.field");
+    if (li) setHover(+li.dataset.idx);
   });
   $("#only-filled").addEventListener("change", () => currentPayload() && renderFields(currentPayload()));
 }
@@ -590,18 +641,17 @@ function renderJson(p) {
   const text = p.json_text;
   const toolbar = `<div class="json-toolbar">
       <span class="fname">${esc(p.json_filename)}</span>
-      <span class="muted small">${text === null ? "" : text ? `${new Blob([text]).size} B` : "0 B"}</span>
       <span class="spacer"></span>
       <button class="btn small" type="button" data-act="copy"${text ? "" : " disabled"}>Kopiuj</button>
-      <button class="btn small primary" type="button" data-act="download"${text === null ? " disabled" : ""}>Pobierz .json</button>
+      <button class="btn small primary" type="button" data-act="download"${text === null ? " disabled" : ""}>Pobierz plik JSON</button>
     </div>`;
   let body;
-  if (text === null) body = `<div class="empty-json">Brak pliku wynikowego (ustawienie <code>output.unknown_output: none</code>).</div>`;
+  if (text === null) body = `<div class="empty-json">Dla tego dokumentu nie tworzy się pliku wynikowego (tak ustawiono w konfiguracji).</div>`;
   else if (!text)
-    body = `<div class="empty-json"><strong>Pusty plik .json (0 bajtów)</strong>
-      <p>Dokument nie został rozpoznany jako żadna z obsługiwanych klas, dlatego — zgodnie z wymaganiami organizatora —
-      zapisywany jest pusty plik <code>${esc(p.json_filename)}</code>. Taki sam plik zapisze przetwarzanie wsadowe (<code>./start.sh</code>).</p></div>`;
-  else body = `<pre class="json" tabindex="0" aria-label="Wynikowy JSON"><code>${highlightJson(text)}</code></pre>`;
+    body = `<div class="empty-json"><strong>Pusty plik JSON</strong>
+      <p>Dokument nie został rozpoznany jako żaden z typów dokumentów, dlatego — zgodnie z zasadami — wynikiem jest pusty plik.
+      Taki sam plik powstanie przy przetwarzaniu wsadowym.</p></div>`;
+  else body = `<pre class="json" tabindex="0" aria-label="Wynik w formacie JSON"><code>${highlightJson(text)}</code></pre>`;
   panel.innerHTML = toolbar + body;
 }
 
@@ -610,7 +660,7 @@ function initJson() {
     const btn = e.target.closest("[data-act]");
     const p = currentPayload();
     if (!btn || !p) return;
-    if (btn.dataset.act === "copy") toast((await copyText(p.json_text || "")) ? "Skopiowano JSON do schowka" : "Nie udało się skopiować");
+    if (btn.dataset.act === "copy") toast((await copyText(p.json_text || "")) ? "Skopiowano do schowka" : "Nie udało się skopiować");
     if (btn.dataset.act === "download") downloadText(p.json_text ?? "", p.json_filename);
   });
 }
@@ -643,7 +693,7 @@ function initSubtabs() {
 // =================================================================== detail
 function renderDetail() {
   const d = current();
-  $("#empty-state").hidden = !!d;
+  $("#detail-empty").hidden = !!d;
   $("#doc-view").hidden = !d;
   if (!d) return;
   renderHead(d);
@@ -664,6 +714,11 @@ function renderDetail() {
 
 // =================================================================== start
 initTheme();
+initHealth();
+$("#pick-files").addEventListener("click", (e) => {
+  e.stopPropagation(); // the zone's own click handler would open the dialog a second time
+  $("#file-input").click();
+});
 initWorkshop({ onOpenDocument: openPayload, onSaved: loadHealth, getHealth: () => state.health });
 initUpload();
 initDocList();
@@ -672,4 +727,5 @@ initFields();
 initJson();
 initSubtabs();
 initTabs();
+renderDocList();
 loadHealth();

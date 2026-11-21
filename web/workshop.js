@@ -4,7 +4,7 @@
 // Pole tekstowe YAML jest zawsze źródłem prawdy dla Sprawdź / Testuj / Zapisz: w trybie formularza zmiany są najpierw
 // zamieniane na YAML (/api/doc-types/dump). Przełączenie bez zmian w formularzu nie zmienia tekstu YAML (komentarze zostają).
 
-import { $, esc, api, toast, pct, fmtValue, trunc, badgeHtml, methodHtml, confHtml } from "./util.js";
+import { $, esc, api, toast, fmtValue, trunc, plural, fieldLabel, confWord } from "./util.js";
 import { buildModel, modelToJson, renderForm, canon } from "./classform.js";
 
 const ws = {
@@ -25,13 +25,15 @@ const formChanged = () => ws.mode === "form" && !!ws.form && JSON.stringify(form
 const isDirty = () => !!ws.current && (el.yaml.value !== ws.current.original || formChanged());
 const jsonPost = (path, body) =>
   api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const jsonPut = (path, body) =>
+  api(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 // ------------------------------------------------------------------ public
 export function initWorkshop(hooks) {
   Object.assign(ws.hooks, hooks);
   for (const id of ["yaml", "gutter", "check", "test", "test-file", "save", "revert", "new", "title", "file", "dirty", "msg", "result",
-    "form", "editor", "preview", "preview-dlg", "preview-text", "modes", "keys"])
-    el[id.replace("-", "_")] = $(`#ws-${id}`);
+    "form", "editor", "preview", "preview-dlg", "preview-text", "modes", "keys", "mode-toggle", "placeholder", "actions", "readonly-note"])
+    el[id.replaceAll("-", "_")] = $(`#ws-${id}`);
   try {
     ws.mode = localStorage.getItem("ws-mode") === "yaml" ? "yaml" : "form";
   } catch {
@@ -46,6 +48,8 @@ export function initWorkshop(hooks) {
   el.list = $("#class-list");
 
   el.list.addEventListener("click", (e) => {
+    const sw = e.target.closest("[data-toggle]");
+    if (sw) return toggleEnabled(sw.dataset.toggle, sw);
     const item = e.target.closest(".class-item");
     if (item) openClass(item.dataset.id);
   });
@@ -89,11 +93,17 @@ async function loadMeta() {
 // ------------------------------------------------------------------ form ↔ YAML
 function showMode() {
   const form = ws.mode === "form";
-  for (const b of el.modes.querySelectorAll("[data-mode]")) b.setAttribute("aria-pressed", String(b.dataset.mode === ws.mode));
-  el.form.hidden = !form || !ws.form;
-  el.editor.hidden = form && !!ws.form;
-  el.keys.hidden = form;
-  el.preview.hidden = !form;
+  const open = !!ws.current;
+  el.placeholder.hidden = open;
+  el.actions.hidden = !open;
+  el.form.hidden = !open || !form || !ws.form;
+  el.editor.hidden = !open || (form && !!ws.form);
+  const yamlShown = !el.editor.hidden;
+  el.mode_toggle.hidden = !open;
+  el.mode_toggle.dataset.mode = yamlShown ? "form" : "yaml";
+  el.mode_toggle.setAttribute("aria-pressed", String(yamlShown));
+  el.mode_toggle.textContent = yamlShown ? "← Wróć do formularza" : "Tryb zaawansowany (YAML)";
+  el.preview.hidden = !open || yamlShown;
 }
 
 /** Fill the form from the YAML text. false (and errors shown) if the YAML cannot be read as data. */
@@ -101,7 +111,7 @@ async function loadForm() {
   const [meta, parsed] = await Promise.all([loadMeta(), jsonPost("/api/doc-types/parse", { yaml: el.yaml.value })]);
   if (!parsed.data) {
     showReport(parsed);
-    showMessage("err", "Nie można otworzyć formularza — najpierw popraw błędy w YAML:" + issueList(parsed.errors || []));
+    showMessage("err", "Nie można otworzyć formularza, bo plik konfiguracji zawiera błędy. Popraw je w trybie zaawansowanym:" + issueList(parsed.errors || []));
     return false;
   }
   const model = buildModel(parsed.data);
@@ -109,7 +119,7 @@ async function loadForm() {
   const losses = [...(parsed.losses || [])];
   if (canon(json) !== canon(parsed.data)) losses.push("część ustawień ma postać, której formularz nie odwzorowuje dokładnie");
   ws.form = { model, snapshot: JSON.stringify(json), losses };
-  renderForm(el.form, model, { meta, losses, onChange: updateHeader });
+  renderForm(el.form, model, { meta, losses, onChange: updateHeader, isNew: !ws.current?.id });
   return true;
 }
 
@@ -118,7 +128,7 @@ async function syncForm() {
   if (ws.mode !== "form" || !ws.form) return true;
   const { json, problems } = formJson();
   if (problems.length) {
-    showMessage("err", `<strong>Popraw formularz:</strong>${issueList(problems.map((message) => ({ message })))}`);
+    showMessage("err", `<strong>Uzupełnij formularz:</strong>${issueList(problems.map((message) => ({ message })))}`);
     return false;
   }
   if (JSON.stringify(json) === ws.form.snapshot) return true; // unchanged → keep the YAML text as it is
@@ -175,25 +185,62 @@ export async function refreshClasses() {
 }
 
 // ------------------------------------------------------------------ list
+const SWITCH_HINT = "Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON";
+
 function renderList() {
+  const readonly = !!ws.hooks.getHealth()?.readonly;
   el.list.innerHTML = ws.classes
     .map((c) => {
-      const flags = !c.valid
-        ? `<span class="badge error">błąd w pliku</span>`
-        : !c.enabled
-          ? `<span class="badge unknown">wyłączona</span>`
-          : badgeHtml(c.id, "aktywna");
-      return `<li><button class="class-item${ws.current?.id === c.id ? " active" : ""}" data-id="${esc(c.id)}" type="button">
-        <span class="ci-top"><span class="ci-name">${esc(c.name)}</span>${flags}</span>
-        <span class="ci-meta">${esc(c.file)} · ${c.fields.length} pól · ${c.signals} sygn.</span>
-      </button></li>`;
+      const on = !!c.enabled;
+      const control = !c.valid
+        ? `<span class="status err">błąd w konfiguracji</span>`
+        : `<button class="switch" type="button" role="switch" aria-checked="${on}" data-toggle="${esc(c.id)}"
+            ${readonly ? "disabled" : ""} title="${readonly ? "Zmiany zostały wyłączone przez administratora" : SWITCH_HINT}"
+            aria-label="${esc(c.name || c.id)}: ${on ? "rozpoznawany" : "wyłączony"}">
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            <span class="switch-label">${on ? "Rozpoznawany" : "Wyłączony"}</span>
+          </button>`;
+      const desc = String(c.description || "").replace(/\s+/g, " ").trim();
+      const active = ws.current?.id === c.id;
+      return `<li class="${c.valid && !on ? "off" : ""}">
+        <button class="class-item${active ? " active" : ""}" data-id="${esc(c.id)}" type="button" aria-current="${active}">
+          <span class="ci-name">${esc(c.name || c.id)}</span>
+          ${desc ? `<span class="ci-desc">${esc(desc)}</span>` : ""}
+        </button>
+        <div class="ci-switch">${control}</div>
+      </li>`;
     })
     .join("");
-  if (!ws.classes.length) el.list.innerHTML = `<li class="muted small">Brak plików w config/doc_types/.</li>`;
+  if (!ws.classes.length) el.list.innerHTML = `<li class="muted small">Nie ma jeszcze żadnego typu dokumentu.</li>`;
+}
+
+async function toggleEnabled(id, btn) {
+  const c = ws.classes.find((x) => x.id === id);
+  if (!c || ws.busy) return;
+  if (ws.hooks.getHealth()?.readonly) return toast("Zmiany zostały wyłączone przez administratora");
+  if (ws.current?.id === id && isDirty()) return toast("Najpierw zapisz albo cofnij zmiany w tym typie dokumentu", 3500);
+  const enabled = !c.enabled;
+  btn.disabled = true;
+  try {
+    const res = await jsonPut(`/api/doc-types/${encodeURIComponent(id)}/enabled`, { enabled });
+    if (res && res.ok === false) throw new Error(res.detail || "Nie udało się zmienić ustawienia");
+    await refreshClasses();
+    await ws.hooks.onSaved();
+    if (ws.current?.id === id) {
+      // reload the editor with the file as it is now (only the enabled line changed)
+      const text = await api(`/api/doc-types/${encodeURIComponent(id)}/yaml`);
+      await setEditor(text, { ...ws.current });
+    }
+    toast(enabled ? `„${c.name}” jest znowu rozpoznawany` : `„${c.name}” jest wyłączony — takie dokumenty dostaną pusty plik JSON`, 4000);
+    el.list.querySelector(`[data-toggle="${CSS.escape(id)}"]`)?.focus();
+  } catch (e) {
+    btn.disabled = false;
+    toast(e.message, 5000);
+  }
 }
 
 function confirmDiscard() {
-  return !isDirty() || confirm("Masz niezapisane zmiany w edytorze. Porzucić je?");
+  return !isDirty() || confirm("Masz niezapisane zmiany. Czy na pewno chcesz je porzucić?");
 }
 
 async function openClass(id) {
@@ -212,14 +259,26 @@ async function newClass() {
   try {
     const text =
       ws.mode === "form"
-        ? (await jsonPost("/api/doc-types/dump", { data: (await loadMeta()).template })).yaml
+        ? (await jsonPost("/api/doc-types/dump", { data: friendlyTemplate((await loadMeta()).template) })).yaml
         : await api("/api/doc-types/template");
     await setEditor(text, { id: null, file: null, name: null });
     if (ws.mode === "yaml") el.yaml.focus();
-    toast("Szablon nowej klasy — zmień id, sygnały i pola, potem Testuj i Zapisz", 4000);
+    toast("Nowy typ dokumentu — uzupełnij nazwę, frazy i pola, potem Testuj i Zapisz", 4000);
   } catch (e) {
     showMessage("err", esc(e.message));
   }
+}
+
+/** Template of a new type in plain wording: importance levels Wysoka/Niska instead of odd weights, no example phrases. */
+function friendlyTemplate(tpl) {
+  const t = JSON.parse(JSON.stringify(tpl));
+  t.name = "Nowy typ dokumentu";
+  t.id = "nowy_typ_dokumentu";
+  delete t.description;
+  const c = t.classification || (t.classification = {});
+  c.min_score = 4;
+  c.signals = [{ pattern: "tytuł dokumentu", weight: 4, scope: "head" }];
+  return t;
 }
 
 async function setEditor(text, cur) {
@@ -252,14 +311,16 @@ async function setEditor(text, cur) {
 function updateHeader() {
   const cur = ws.current;
   if (!cur) return;
-  el.title.textContent = cur.id ? `Klasa: ${cur.name || cur.id}` : "Nowa klasa (niezapisana)";
-  el.file.textContent = cur.file ? `config/doc_types/${cur.file}` : "zostanie zapisana jako config/doc_types/<id>.yaml";
+  el.title.textContent = cur.id ? cur.name || cur.id : "Nowy typ dokumentu";
+  el.file.textContent = cur.id ? "" : "Jeszcze niezapisany — uzupełnij formularz i kliknij „Zapisz”.";
+  el.file.hidden = !!cur.id;
   const dirty = isDirty();
   el.dirty.hidden = !dirty;
   const readonly = !!ws.hooks.getHealth()?.readonly;
   el.check.disabled = el.test.disabled = el.preview.disabled = ws.busy;
   el.save.disabled = ws.busy || readonly;
-  el.save.title = readonly ? "Zapisywanie wyłączone na serwerze (ODWOLANIA2JSON_WEB_READONLY)" : "Zapisz do config/doc_types/ i przeładuj potok";
+  el.save.title = readonly ? "Zapisywanie zostało wyłączone przez administratora" : "Zapisz typ dokumentu (Ctrl/⌘+S)";
+  el.readonly_note.hidden = !readonly;
   el.revert.disabled = ws.busy || !dirty;
 }
 
@@ -358,7 +419,7 @@ function issueList(items) {
   return `<ul>${items
     .map(
       (it) =>
-        `<li>${it.line ? `<button class="line-link" type="button" data-line="${it.line}" title="przejdź do linii ${it.line}">linia ${it.line}</button> ` : ""}${esc(it.message)}</li>`,
+        `<li>${esc(it.message)}${it.line ? ` <button class="line-link" type="button" data-line="${it.line}" title="Pokaż w trybie zaawansowanym (YAML), linia ${it.line}">pokaż w YAML</button>` : ""}</li>`,
     )
     .join("")}</ul>`;
 }
@@ -368,17 +429,19 @@ function showReport(rep, okText) {
   updateGutter();
   let html = "";
   if (rep.errors?.length) {
-    html += `<div class="alert err"><strong>${rep.errors.length === 1 ? "Znaleziono 1 błąd" : `Znaleziono błędy: ${rep.errors.length}`}</strong>${issueList(rep.errors)}</div>`;
+    html += `<div class="alert err" role="alert"><strong>${rep.errors.length === 1 ? "Trzeba poprawić 1 rzecz" : `Trzeba poprawić kilka rzeczy (${rep.errors.length})`}</strong>${issueList(rep.errors)}</div>`;
   } else if (okText) {
     html += `<div class="alert ok">${okText}</div>`;
   }
-  if (rep.warnings?.length) html += `<div class="alert warn"><strong>Uwagi</strong>${issueList(rep.warnings)}</div>`;
+  if (rep.warnings?.length) html += `<div class="alert warn"><strong>Warto sprawdzić</strong>${issueList(rep.warnings)}</div>`;
   el.msg.innerHTML = html;
 }
 
 function summaryText(rep) {
   const s = rep.summary || {};
-  return `✓ Konfiguracja poprawna — klasa „${esc(rep.name)}” (<code>${esc(rep.id)}</code>): ${s.fields} pól, ${s.signals} sygnałów rozpoznawania (próg ${s.min_score}).`;
+  const f = s.fields ?? 0;
+  const g = s.signals ?? 0;
+  return `✓ Wszystko w porządku. Typ „${esc(rep.name)}” odczytuje ${f} ${plural(f, ["pole", "pola", "pól"])} i ma ${g} ${plural(g, ["frazę", "frazy", "fraz"])} rozpoznawania.`;
 }
 
 // ------------------------------------------------------------------ actions
@@ -392,7 +455,7 @@ async function validate() {
 
 async function check() {
   if (!ws.current || ws.busy) return;
-  setBusy(true, "Sprawdzanie…");
+  setBusy(true, "Sprawdzam…");
   try {
     if (!(await syncForm())) return;
     const rep = await validate();
@@ -411,7 +474,7 @@ async function test(file) {
   } catch (e) {
     return showMessage("err", esc(e.message));
   }
-  setBusy(true, `Testowanie na pliku ${file.name} (konfiguracja nie jest zapisywana)…`);
+  setBusy(true, `Testuję na pliku ${file.name} — zmiany nie są zapisywane…`);
   el.result.innerHTML = "";
   const body = new FormData();
   body.append("yaml", el.yaml.value);
@@ -421,7 +484,7 @@ async function test(file) {
     ws.lastTest = p;
     ws.errorLines = new Set();
     updateGutter();
-    el.msg.innerHTML = p.test.warnings?.length ? `<div class="alert warn"><strong>Uwagi</strong>${issueList(p.test.warnings)}</div>` : "";
+    el.msg.innerHTML = p.test.warnings?.length ? `<div class="alert warn"><strong>Warto sprawdzić</strong>${issueList(p.test.warnings)}</div>` : "";
     renderTest(p);
     el.result.scrollIntoView({ block: "nearest", behavior: "smooth" });
   } catch (e) {
@@ -434,43 +497,49 @@ async function test(file) {
 
 function renderTest(p) {
   const t = p.test;
+  const names = Object.fromEntries(ws.classes.map((c) => [c.id, c.name]));
+  names[t.doc_type] = t.name;
   const verdict = t.recognised
-    ? `<p class="verdict ok-text">✓ Dokument rozpoznany jako „${esc(t.name)}” — pewność ${pct(p.confidence)}.</p>`
-    : `<p class="verdict err-text">✗ Dokument nie został rozpoznany jako „${esc(t.name)}”. Wynik klasyfikacji: ${
-        p.doc_type ? `„${esc(p.doc_type_name || p.doc_type)}”` : "nierozpoznany"
-      }.</p>`;
+    ? `<p class="verdict ok-text">✓ Dokument został rozpoznany jako „${esc(t.name)}”.</p>`
+    : `<p class="verdict err-text">✗ Dokument nie został rozpoznany jako „${esc(t.name)}”. ${
+        p.doc_type ? `System uznał go za: „${esc(p.doc_type_name || p.doc_type)}”.` : "Nie pasuje do żadnego typu."
+      }</p>`;
   const rows = Object.entries(t.min_score)
     .sort((a, b) => (p.scores[b[0]] ?? 0) - (p.scores[a[0]] ?? 0))
     .map(([id, min]) => {
       const score = p.scores[id] ?? 0;
-      return `<tr class="${id === t.doc_type ? "tested" : ""}"><td>${badgeHtml(id, id)}</td><td>${score}</td><td>${min}</td>
-        <td>${score >= min ? '<span class="ok-text">≥ próg</span>' : '<span class="muted">poniżej progu</span>'}</td></tr>`;
+      return `<tr class="${id === t.doc_type ? "tested" : ""}"><td>${esc(names[id] || id)}</td><td>${score}</td><td>${min}</td>
+        <td>${score >= min ? '<span class="ok-text">wystarczająco</span>' : '<span class="muted">za mało</span>'}</td></tr>`;
     })
     .join("");
   const fields = (p.fields || [])
-    .map(
-      (f) => `<tr><td><code>${esc(f.path)}</code></td><td class="v">${f.value === null ? '<span class="muted">null</span>' : esc(trunc(fmtValue(f.value), 160))}</td>
-        <td>${methodHtml(f.method)}</td><td>${f.method ? confHtml(f.confidence) : "—"}</td></tr>`,
-    )
+    .map((f) => {
+      const { group, label } = fieldLabel(f.path);
+      return `<tr><td>${group ? `<span class="muted">${esc(group)} › </span>` : ""}${esc(label)}</td>
+        <td class="v">${f.value === null ? '<span class="muted">nie znaleziono</span>' : esc(trunc(fmtValue(f.value), 160))}</td>
+        <td>${f.value !== null && f.method ? confWord(f.confidence) : ""}</td></tr>`;
+    })
     .join("");
-  el.result.innerHTML = `<section class="test-card" aria-label="Wynik testu">
-      <h3>Wynik testu: ${esc(p.filename)} <span class="muted small">(${t.replaced ? "klasa zastąpiona" : "klasa dodana"} tymczasowo — nic nie zapisano)</span></h3>
+  el.result.innerHTML = `<section class="test-card" aria-labelledby="test-title">
+      <h3 id="test-title">Wynik testu: ${esc(p.filename)}</h3>
+      <p class="muted small">Test nie zapisuje żadnych zmian.</p>
       ${verdict}
-      <table class="score-table"><thead><tr><th>klasa</th><th>punkty</th><th>próg (min_score)</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="muted small">Uzasadnienie: ${esc(p.reason || "—")}</p>
-      ${p.doc_type ? `<table class="mini-table"><thead><tr><th>pole</th><th>wartość</th><th>metoda</th><th>pewność</th></tr></thead><tbody>${fields}</tbody></table>` : ""}
-      <div><button class="btn" type="button" data-open>Otwórz w podglądzie dokumentu (podświetlenia, JSON)</button></div>
+      <details class="tech"><summary>Punkty rozpoznawania</summary>
+        <table class="score-table"><thead><tr><th scope="col">Typ dokumentu</th><th scope="col">Punkty</th><th scope="col">Wymagane</th><th scope="col"></th></tr></thead><tbody>${rows}</tbody></table>
+      </details>
+      ${p.doc_type ? `<table class="mini-table"><thead><tr><th scope="col">Pole</th><th scope="col">Odczytana wartość</th><th scope="col">Pewność</th></tr></thead><tbody>${fields}</tbody></table>` : ""}
+      <div><button class="btn" type="button" data-open>Pokaż na podglądzie dokumentu</button></div>
     </section>`;
 }
 
 async function save() {
   if (!ws.current || ws.busy) return;
-  if (ws.hooks.getHealth()?.readonly) return toast("Zapisywanie klas jest wyłączone na serwerze");
+  if (ws.hooks.getHealth()?.readonly) return toast("Zapisywanie zostało wyłączone przez administratora");
   if (formChanged() && ws.form.losses.length) {
-    const q = `Zapis z formularza usunie z pliku: ${ws.form.losses.join("; ")}.\n\nAby to zachować, anuluj i edytuj klasę w trybie YAML. Zapisać mimo to?`;
+    const q = `Zapis z formularza usunie z pliku konfiguracji: ${ws.form.losses.join("; ")}.\n\nAby to zachować, anuluj i skorzystaj z trybu zaawansowanego (YAML). Zapisać mimo to?`;
     if (!confirm(q)) return;
   }
-  setBusy(true, "Sprawdzanie przed zapisem…");
+  setBusy(true, "Sprawdzam przed zapisem…");
   try {
     if (!(await syncForm())) return;
     const rep = await validate();
@@ -482,15 +551,15 @@ async function save() {
     const cur = ws.current;
     const question =
       cur.id && id !== cur.id
-        ? `Zmieniono id klasy z „${cur.id}” na „${id}”.\nZapisać jako NOWĄ klasę „${id}”? Klasa „${cur.id}” pozostanie bez zmian.`
+        ? `Zmieniono identyfikator z „${cur.id}” na „${id}”.\nZapisać jako NOWY typ dokumentu? Typ „${cur.id}” pozostanie bez zmian.`
         : !cur.id && ws.classes.some((c) => c.id === id)
-          ? `Klasa „${id}” już istnieje. Nadpisać ją?`
+          ? `Typ dokumentu o identyfikatorze „${id}” już istnieje. Zastąpić go?`
           : null;
     if (question && !confirm(question)) {
       el.msg.innerHTML = "";
       return;
     }
-    setBusy(true, "Zapisywanie i przeładowanie potoku…");
+    setBusy(true, "Zapisuję…");
     const text = el.yaml.value;
     const res = await api(`/api/doc-types/${encodeURIComponent(id)}/yaml`, {
       method: "PUT",
@@ -503,8 +572,8 @@ async function save() {
     await ws.hooks.onSaved();
     showReport(
       { errors: [], warnings: res.warnings },
-      `✓ Zapisano <code>config/doc_types/${esc(res.file)}</code>${res.created ? " (nowa klasa)" : ""}. Potok przeładowany — aktywne klasy: ${res.doc_types.map((d) => `<code>${esc(d)}</code>`).join(", ")}.${
-        res.active ? " Nowe dokumenty są już przetwarzane z tą konfiguracją." : " Klasa jest wyłączona (enabled: false)."
+      `✓ Zapisano typ dokumentu „${esc(rep.name)}”${res.created ? " (nowy)" : ""}.${
+        res.active ? " Kolejne dokumenty będą już rozpoznawane z tymi ustawieniami." : " Typ jest nieaktywny — nie będzie używany, dopóki go nie włączysz."
       }`,
     );
     updateHeader();
@@ -519,7 +588,7 @@ async function save() {
 
 async function revert() {
   if (!ws.current || !isDirty()) return;
-  if (!confirm("Przywrócić ostatnio wczytaną wersję? Zmiany w edytorze zostaną utracone.")) return;
+  if (!confirm("Cofnąć wszystkie niezapisane zmiany?")) return;
   el.yaml.value = ws.current.original;
   ws.errorLines = new Set();
   updateGutter();

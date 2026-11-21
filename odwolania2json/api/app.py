@@ -20,6 +20,8 @@ Endpoints (contract for the frontend — web/):
   POST   /api/doc-types/test          → multipart "yaml" + "file" (1 PDF) → document payload + "test" — classified and
                                           extracted with a temporary registry (class added/replaced); nothing is saved
   PUT    /api/doc-types/{id}/yaml     → body like validate → validate, save <config_dir>/doc_types/<id>.yaml, reload
+  PUT    /api/doc-types/{id}/enabled  → body {"enabled": bool} → flips only the `enabled:` line of the file (comments
+                                          kept), then validate + save + reload like the PUT above
   Form editor (the same class as plain data; validate / test / save go through the YAML endpoints above):
   GET    /api/doc-types/meta          → {"field_types", "scopes", "grounds", "extraction_modes", "normalizers",
                                           "validators", "dictionaries", "id_pattern", "template" (data of a new class)}
@@ -552,6 +554,27 @@ def create_app(
             raise HTTPException(403, "Zapisywanie klas jest wyłączone (ODWOLANIA2JSON_WEB_READONLY)")
         text = await _yaml_from_request(request)
         return await run_in_threadpool(_save_class, doc_type_id, text)
+
+    @app.put("/api/doc-types/{doc_type_id}/enabled")
+    async def put_doc_type_enabled(doc_type_id: str, request: Request):
+        _guard_id(doc_type_id)
+        if state.readonly:
+            raise HTTPException(403, "Zapisywanie klas jest wyłączone (ODWOLANIA2JSON_WEB_READONLY)")
+        body = await _json_from_request(request)
+        enabled = body.get("enabled") if isinstance(body, dict) else None
+        if not isinstance(enabled, bool):
+            raise HTTPException(400, "Oczekiwano {\"enabled\": true|false}")
+        return await run_in_threadpool(_set_enabled, doc_type_id, enabled)
+
+    def _set_enabled(doc_type_id: str, enabled: bool):
+        f = workshop.find_class_file(state.config_dir, doc_type_id)
+        if f is None:
+            raise HTTPException(404, f"Nie ma klasy „{doc_type_id}”")
+        text = workshop.set_enabled_text(f.read_text(encoding="utf-8"), enabled)
+        report = workshop.validate_yaml(text, state.dictionaries(), expected_id=doc_type_id)
+        if report.ok and report.spec is not None and report.spec.enabled is not enabled:
+            raise HTTPException(422, "Nie udało się zmienić ustawienia automatycznie — zmień „enabled” w trybie YAML")
+        return _save_class(doc_type_id, text)
 
     def _save_class(doc_type_id: str, text: str):
         report = workshop.validate_yaml(text, state.dictionaries(), expected_id=doc_type_id)

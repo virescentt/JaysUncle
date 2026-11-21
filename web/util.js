@@ -72,12 +72,70 @@ export function classHue(id) {
 }
 export function badgeHtml(docType, name, big = false) {
   const cls = big ? " big" : "";
-  if (!docType) return `<span class="badge unknown${cls}" title="Dokument spoza obsługiwanych klas — wynikiem jest pusty plik .json">nierozpoznany – pusty JSON</span>`;
-  return `<span class="badge${cls}" style="--h:${classHue(docType)}" title="klasa: ${esc(docType)}">${esc(name || docType)}</span>`;
+  if (!docType) return `<span class="badge unknown${cls}" title="Dokument nie pasuje do żadnego typu — wynikiem jest pusty plik JSON">Nie rozpoznano</span>`;
+  return `<span class="badge${cls}" style="--h:${classHue(docType)}">${esc(name || docType)}</span>`;
+}
+
+// ------------------------------------------------------------------ human wording
+/** Polish plural: plural(5, ["typ", "typy", "typów"]). */
+export function plural(n, [one, few, many]) {
+  if (n === 1) return one;
+  const d = n % 10;
+  const t = n % 100;
+  return d >= 2 && d <= 4 && (t < 12 || t > 14) ? few : many;
+}
+
+// key words written without Polish letters in field names → readable label
+const WORDS = {
+  tytul: "tytuł", odwolanie: "odwołanie", odwolujacy: "odwołujący", zamawiajacy: "zamawiający", zamowienie: "zamówienie",
+  czynnosc: "czynność", dzien: "dzień", powod: "powód", imie: "imię", miejscowosc: "miejscowość", pelnomocnicy: "pełnomocnicy",
+  pelnomocnik: "pełnomocnik", pelnomocnika: "pełnomocnika", podpisujacy: "podpisujący", postepowania: "postępowania",
+  postepowanie: "postępowanie", prowadzacy: "prowadzący", wartosc: "wartość", oplata: "opłata", siedziba: "siedziba",
+  mail: "e-mail", email: "e-mail", krs: "KRS", nip: "NIP", pesel: "PESEL", regon: "REGON", bzp: "BZP", ted: "TED", kio: "KIO",
+  id: "ID", uzp: "UZP", iban: "IBAN", nr: "nr", wplata: "wpłata", data: "data", numer: "numer", ulica: "ulica",
+  kod: "kod", pocztowy: "pocztowy", adres: "adres", tresc: "treść", zarzut: "zarzut", zarzuty: "zarzuty", zadanie: "żądanie",
+  zadania: "żądania", uzasadnienie: "uzasadnienie", wykonawca: "wykonawca", wykonawcy: "wykonawcy", sad: "sąd",
+};
+
+/** "data_operacji" → "Data operacji", "OdwolanieKIO" → "Odwołanie KIO", "przez-pelnomocnika" → "Przez pełnomocnika". */
+export function humanizeKey(key) {
+  const words = String(key ?? "")
+    .replace(/([a-ząćęłńóśźż])([A-ZĄĆĘŁŃÓŚŹŻ])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[\s_\-.]+/)
+    .filter(Boolean)
+    .map((w) => {
+      const low = w.toLowerCase();
+      return WORDS[low] ?? (w === w.toUpperCase() && w.length > 1 ? w : low);
+    });
+  const s = words.join(" ");
+  return s ? s[0].toUpperCase() + s.slice(1) : "";
+}
+
+/** Path of an output field → {group, label}; "a.b[0].c" → group "A › B — nr 1", label "C". */
+export function fieldLabel(path) {
+  const parts = String(path ?? "").split(".");
+  const leaf = parts.pop() || "";
+  const human = (seg) => seg.replace(/^(.*?)\[(\d+)\]$/, (_, k, n) => `${humanizeKey(k)} — nr ${+n + 1}`).replace(/^[^—]*$/, (k) => humanizeKey(k));
+  return { group: parts.map(human).join(" › "), label: human(leaf) };
+}
+
+/** Confidence 0..1 → plain level. */
+export function confLevel(c) {
+  if (c === null || c === undefined) return null;
+  if (c >= 0.8) return { key: "hi", text: "Wysoka" };
+  if (c >= 0.6) return { key: "mid", text: "Średnia" };
+  return { key: "lo", text: "Niska" };
+}
+export function confWord(c) {
+  const l = confLevel(c);
+  if (!l) return `<span class="muted">—</span>`;
+  const icon = l.key === "hi" ? "●" : l.key === "mid" ? "◐" : "○";
+  return `<span class="conf-word ${l.key}" title="Pewność odczytu: ${l.text.toLowerCase()}"><span aria-hidden="true">${icon}</span> ${l.text}</span>`;
 }
 
 // ------------------------------------------------------------------ extraction method / confidence
-const METHOD_BASE = { rules: "reguła", llm: "LLM", derived: "słownik" };
+const METHOD_BASE = { rules: "reguły", llm: "model językowy", derived: "słownik" };
 const METHOD_DETAIL = { pattern: "wzorzec", label: "etykieta", section: "sekcja", heuristic: "heurystyka" };
 export function methodLabel(m) {
   if (!m) return "—";
@@ -96,7 +154,7 @@ export function confHtml(c) {
   const level = c >= 0.8 ? "hi" : c >= 0.5 ? "mid" : "lo";
   return `<span class="conf ${level}" title="pewność ${pct(c)}"><span class="bar"><i style="--v:${Math.max(0, Math.min(1, c))}"></i></span>${pct(c)}</span>`;
 }
-export const classificationMethod = (m) => ({ rules: "reguły", llm: "LLM", none: "—" })[m] || m;
+export const classificationMethod = (m) => ({ rules: "reguły", llm: "model językowy", none: "—" })[m] || m;
 
 // ------------------------------------------------------------------ JSON syntax highlighting
 const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;

@@ -1,7 +1,9 @@
-// Tryb "Formularz" zakładki "Klasy dokumentów": przyjazna edycja klasy bez znajomości YAML.
+// Formularz zakładki "Typy dokumentów": przyjazna edycja typu (klasy) dokumentu bez znajomości YAML.
 // Formularz pracuje na danych klasy (to, co daje yaml.safe_load) — model → JSON → /api/doc-types/dump → YAML.
 // Klucze, których formularz nie obsługuje (strategy, params, section, enum, …), są przechowywane i oddawane bez zmian,
 // kolejność kluczy jest zachowana.
+
+import { humanizeKey } from "./util.js";
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -43,6 +45,7 @@ function sigModel(s) {
     orig,
     text: literal ? unescape(p) : p,
     isRegex: !literal,
+    adv: !literal, // loaded as a programmer regex → shown read-only in the "advanced" group
     weight: orig.weight ?? 1,
     head: orig.scope === "head",
     cs: !!orig.case_sensitive,
@@ -92,12 +95,25 @@ export function buildModel(data) {
 }
 
 export const newField = (key = "") => ({ ...fieldModel(key, { type: "string" }, true), isNew: true });
-export const newSignal = () => ({ orig: {}, text: "", isRegex: false, weight: 1, head: false, cs: false });
+export const newSignal = () => ({ orig: {}, text: "", isRegex: false, adv: false, weight: 2, head: false, cs: false });
+
+/** "Umowa najmu lokalu" → "umowa_najmu_lokalu" (technical id of a new document type). */
+export function slugify(name) {
+  const map = { ą: "a", ć: "c", ę: "e", ł: "l", ń: "n", ó: "o", ś: "s", ź: "z", ż: "z" };
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[ąćęłńóśźż]/g, (c) => map[c])
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+}
 
 // ------------------------------------------------------------------ model → JSON
 function sigJson(s, where, problems) {
   const out = clone(s.orig);
-  if (!s.text.trim()) problems.push(`${where}: puste wyrażenie — wpisz tekst albo usuń wiersz`);
+  if (!s.text.trim()) problems.push(`${where}: pusta fraza — wpisz tekst albo usuń wiersz`);
   const o = String(s.orig.pattern ?? "");
   out.pattern = s.isRegex ? s.text : o && isLiteral(o) && unescape(o) === s.text ? o : reEscape(s.text);
   put(out, s.orig, "weight", Number.isFinite(s.weight) ? s.weight : 1, 1);
@@ -110,8 +126,8 @@ function fieldsJson(nodes, where, problems) {
   const out = {};
   for (const n of nodes) {
     const key = n.key.trim();
-    if (!key) problems.push(`${where || "Pola wyniku"}: pole bez nazwy — uzupełnij nazwę albo usuń pole`);
-    else if (key in out) problems.push(`${where ? `${where}.` : ""}${key}: nazwa pola powtarza się na tym samym poziomie`);
+    if (!key) problems.push(`${where ? `Grupa „${where}”` : "Dane do odczytania"}: pole bez nazwy — uzupełnij „Nazwę pola w wyniku” albo usuń pole`);
+    else if (key in out) problems.push(`Pole „${key}” występuje dwa razy${where ? ` w grupie „${where}”` : ""} — nazwy pól muszą się różnić`);
     else out[key] = fieldJson(n, where ? `${where}.${key}` : key, problems);
   }
   return out;
@@ -149,8 +165,8 @@ export function modelToJson(m) {
   const oc = isObj(o.classification) ? o.classification : {};
   const c = clone(oc);
   put(c, oc, "min_score", Number.isFinite(m.min_score) ? m.min_score : 3, 3);
-  put(c, oc, "signals", m.signals.map((s, i) => sigJson(s, `Wyrażenie charakterystyczne ${i + 1}`, problems)), []);
-  put(c, oc, "negative_signals", m.negative.map((s, i) => sigJson(s, `Wyrażenie wykluczające ${i + 1}`, problems)), []);
+  put(c, oc, "signals", m.signals.map((s, i) => sigJson(s, `Fraza rozpoznawania nr ${i + 1}`, problems)), []);
+  put(c, oc, "negative_signals", m.negative.map((s, i) => sigJson(s, `Fraza wykluczająca nr ${i + 1}`, problems)), []);
   out.classification = c;
 
   const oe = isObj(o.extraction) ? o.extraction : {};
@@ -185,8 +201,8 @@ const TYPE_LABELS = {
   integer: "liczba całkowita",
   boolean: "tak / nie",
   date: "data",
-  object: "grupa pól (obiekt)",
-  array: "lista (wiele elementów)",
+  object: "grupa pól",
+  array: "lista",
 };
 const GROUND_LABELS = {
   auto: "automatycznie (zalecane)",
@@ -195,15 +211,41 @@ const GROUND_LABELS = {
   fuzzy: "przybliżone dopasowanie",
   none: "nie sprawdzaj",
 };
-const MODE_LABELS = { llm: "LLM (wystarczą opisy pól)", rules: "Reguły", hybrid: "Reguły + LLM" };
+const MODE_LABELS = {
+  llm: "Model językowy",
+  rules: "Reguły",
+  hybrid: "Reguły + model językowy",
+};
+const MODE_HELP = {
+  "": "Używany jest sposób ustawiony dla całego programu.",
+  llm: "Model językowy — wystarczą dobre opisy pól. Najprostsze w przygotowaniu.",
+  rules: "Reguły — dokładne i szybkie, ale wymagają wzorców przygotowanych przez informatyka.",
+  hybrid: "Reguły + model językowy — najpierw reguły, a model uzupełnia to, czego reguły nie znalazły.",
+};
+const WEIGHTS = [
+  [1, "Niska"],
+  [2, "Średnia"],
+  [4, "Wysoka"],
+];
 
-const hint = (text) => h("p", { class: "cf-hint", text });
-const labelled = (label, control, help) => h("label", { class: "cf-lbl" }, h("span", { text: label }), control, help ? h("small", { class: "muted", text: help }) : null);
+let uidN = 0;
+const nextId = (p) => `${p}-${++uidN}`;
+const hint = (text, id) => h("p", { class: "cf-hint", text, id });
+
+/** <label for> + control (+ optional hint linked through aria-describedby). */
+function field(label, control, help, cls = "") {
+  const id = control.id || (control.id = nextId("cf"));
+  let helpEl = null;
+  if (help) {
+    helpEl = h("small", { class: "cf-help", id: `${id}-help`, text: help });
+    control.setAttribute("aria-describedby", helpEl.id);
+  }
+  return h("div", { class: `cf-lbl ${cls}`.trim() }, h("label", { for: id, text: label }), control, helpEl);
+}
 
 /**
  * Render the form for model `m` into `root`.
- * ctx: {meta, losses: [str], onChange(), onStructure()} — onChange after every edit (dirty flag),
- * onStructure: re-render request (add / remove / type change) — handled here by calling render again.
+ * ctx: {meta, losses: [str], isNew: bool, onChange()} — onChange after every edit (dirty flag).
  */
 export function renderForm(root, m, ctx) {
   const { meta } = ctx;
@@ -213,6 +255,11 @@ export function renderForm(root, m, ctx) {
     const top = scroller.scrollTop;
     renderForm(root, m, ctx);
     scroller.scrollTop = top;
+    const target = root.querySelector("[data-autofocus]");
+    if (target) {
+      target.removeAttribute("data-autofocus");
+      target.focus();
+    }
     changed();
   };
   const text = (obj, key, { after, ...attrs } = {}) =>
@@ -236,10 +283,10 @@ export function renderForm(root, m, ctx) {
         changed();
       },
     });
-  const check = (obj, key, label, title) =>
+  const check = (obj, key, label, attrs = {}) =>
     h(
       "label",
-      { class: "check cf-check", title },
+      { class: "check cf-check", ...attrs },
       h("input", {
         type: "checkbox",
         checked: obj[key],
@@ -248,15 +295,16 @@ export function renderForm(root, m, ctx) {
           changed();
         },
       }),
-      label,
+      h("span", { text: label }),
     );
-  const select = (obj, key, options, onchange) =>
+  const select = (obj, key, options, onchange, attrs = {}) =>
     h(
       "select",
       {
+        ...attrs,
         onchange: (e) => {
           obj[key] = e.target.value;
-          if (onchange) onchange();
+          if (onchange) onchange(e.target.value);
           else changed();
         },
       },
@@ -267,6 +315,7 @@ export function renderForm(root, m, ctx) {
       rows: Math.max(2, Math.min(6, obj[key].length + 1)),
       placeholder,
       spellcheck: "false",
+      class: "mono",
       value: obj[key].join("\n"),
       oninput: (e) => {
         obj[key] = e.target.value.split("\n").filter((l) => l.trim() !== "");
@@ -282,7 +331,7 @@ export function renderForm(root, m, ctx) {
         const info = available.find((a) => a.name === name);
         return h(
           "label",
-          { class: `check${info ? "" : " err-text"}`, title: info ? info.doc : "nieznana nazwa — popraw w trybie YAML lub odznacz" },
+          { class: `check${info ? "" : " err-text"}`, title: info ? info.doc : "nieznana nazwa — popraw w trybie zaawansowanym lub odznacz" },
           h("input", {
             type: "checkbox",
             checked: obj[key].includes(name),
@@ -297,81 +346,214 @@ export function renderForm(root, m, ctx) {
     );
   };
   const btn = (label, onclick, attrs = {}) => h("button", { type: "button", class: "btn small", onclick, ...attrs }, label);
+  const section = (title, intro, ...kids) => {
+    const id = nextId("sec");
+    return h("section", { class: "cf-sec", "aria-labelledby": id }, h("h3", { id, text: title }), intro ? hint(intro) : null, ...kids);
+  };
 
   // ---------------------------------------------------------------- 1. podstawowe
-  const idMsg = h("small", { class: "muted" });
+  const idMsg = h("small", { class: "cf-help" });
   const idRe = new RegExp(`^(?:${meta.id_pattern})$`);
   const checkId = (input) => {
     const ok = idRe.test(input.value.trim());
     input.classList.toggle("invalid", !ok);
-    idMsg.className = ok ? "muted" : "err-text";
+    input.setAttribute("aria-invalid", String(!ok));
+    idMsg.className = ok ? "cf-help" : "cf-help err-text";
     idMsg.textContent = ok
-      ? "Nazwa pliku: config/doc_types/" + input.value.trim() + ".yaml"
-      : "Dozwolone tylko małe litery a-z, cyfry i podkreślenie _ (bez spacji i polskich znaków), maks. 64 znaki.";
+      ? m.autoId
+        ? "Tworzony automatycznie z nazwy. Używany wewnętrznie przez program."
+        : "Używany wewnętrznie przez program."
+      : "Dozwolone są tylko małe litery a–z, cyfry i znak _ (bez spacji i polskich liter).";
   };
-  const idInput = text(m, "id", { spellcheck: "false", autocomplete: "off", after: checkId, placeholder: "np. umowa_najmu" });
+  if (m.autoId === undefined) m.autoId = !!ctx.isNew;
+  const idInput = text(m, "id", {
+    spellcheck: "false",
+    autocomplete: "off",
+    class: "mono",
+    placeholder: "np. umowa_najmu",
+    after: (t) => {
+      m.autoId = false;
+      checkId(t);
+    },
+  });
+  idInput.id = nextId("cf");
+  idMsg.id = `${idInput.id}-help`;
+  idInput.setAttribute("aria-describedby", idMsg.id);
   checkId(idInput);
+  const nameInput = text(m, "name", {
+    placeholder: "np. Umowa najmu",
+    class: "cf-big",
+    after: (t) => {
+      if (!m.autoId) return;
+      m.id = slugify(t.value);
+      idInput.value = m.id;
+      checkId(idInput);
+    },
+  });
 
-  const sec1 = h(
-    "fieldset",
-    { class: "cf-sec" },
-    h("legend", { text: "1. Podstawowe" }),
-    hint("Identyfikator to techniczna nazwa klasy (i pliku). Nazwa i opis są widoczne w panelu."),
-    h("div", { class: "cf-grid2" }, h("label", { class: "cf-lbl" }, h("span", { text: "Identyfikator (id)" }), idInput, idMsg), labelled("Nazwa", text(m, "name", { placeholder: "np. Umowa najmu" }))),
-    labelled("Opis", text(m, "description", { rows: 2, placeholder: "Czym jest dokument i kto go wystawia." })),
-    check(m, "enabled", "klasa aktywna (używana przy przetwarzaniu dokumentów)"),
+  const sec1 = section(
+    "Podstawowe informacje",
+    null,
+    field("Nazwa typu dokumentu", nameInput, "Tak ten typ będzie widoczny na liście dokumentów."),
+    field("Krótki opis", text(m, "description", { rows: 2, placeholder: "Czym jest dokument i kto go wystawia." })),
+    h(
+      "div",
+      { class: "cf-grid2" },
+      h("div", { class: "cf-lbl" }, h("label", { for: idInput.id, text: "Identyfikator" }), idInput, idMsg),
+      h(
+        "div",
+        { class: "cf-lbl cf-lbl-check" },
+        check(m, "enabled", "Rozpoznawany (włączony)"),
+        h("small", { class: "cf-help", text: "Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON." }),
+      ),
+    ),
   );
 
   // ---------------------------------------------------------------- 2. rozpoznawanie
-  const sigList = (list, title, help, addLabel) => {
-    const rows = list.map((s, i) =>
-      h(
-        "div",
-        { class: "cf-sig" },
-        text(s, "text", { class: "cf-sig-text", spellcheck: "false", placeholder: s.isRegex ? "wyrażenie regularne, np. sygn\\.?\\s*akt" : "słowo lub zwrot, np. pełnomocnictwo", "aria-label": `${title} ${i + 1}` }),
-        h("label", { class: "cf-lbl cf-weight", title: "Ile punktów daje trafienie" }, h("span", { text: "waga" }), num(s, "weight", { min: "0" })),
-        check(s, "head", "tylko początek dokumentu", "Szukaj tylko na początku dokumentu (np. tytuł)"),
-        check(s, "cs", "rozróżniaj wielkość liter"),
-        check(s, "isRegex", "to jest wyrażenie regularne", "Bez zaznaczenia tekst jest szukany dosłownie (kropki, nawiasy itp. nie mają specjalnego znaczenia)"),
-        btn("Usuń", () => {
-          list.splice(i, 1);
-          rerender();
-        }, { class: "btn small ghost", title: "Usuń wiersz" }),
-      ),
+  const weightSelect = (s, label) => {
+    const known = WEIGHTS.some(([w]) => w === s.weight);
+    const opts = WEIGHTS.map(([w, l]) => [String(w), l]);
+    if (!known) opts.push(["custom", `Inna (${Number.isFinite(s.weight) ? s.weight : "?"})`]);
+    const sel = h(
+      "select",
+      {
+        class: "cf-weight",
+        "aria-label": label,
+        onchange: (e) => {
+          if (e.target.value !== "custom") s.weight = Number(e.target.value);
+          changed();
+        },
+      },
+      opts.map(([v, l]) => h("option", { value: v, selected: (known ? String(s.weight) : "custom") === v ? "selected" : null, text: l })),
     );
-    return h(
+    return sel;
+  };
+
+  const phraseRow = (s, list, n, kind) => {
+    const label = `${kind === "neg" ? "Fraza wykluczająca" : "Fraza"} nr ${n}`;
+    const bodyId = nextId("more");
+    const moreBody = h(
       "div",
-      { class: "cf-siglist" },
-      h("h4", { text: title }),
-      hint(help),
-      rows.length ? rows : h("p", { class: "muted small", text: "Brak." }),
-      btn(addLabel, () => {
-        list.push(newSignal());
-        rerender();
+      { class: "cf-more-body", id: bodyId, hidden: !s.moreOpen },
+      check(s, "cs", "Rozróżniaj wielkość liter"),
+      check(s, "isRegex", "To jest wyrażenie regularne (dla informatyków)", {
+        title: "Bez zaznaczenia tekst jest szukany dosłownie — kropki, nawiasy itp. nie mają specjalnego znaczenia.",
       }),
     );
+    const moreBtn = h(
+      "button",
+      {
+        type: "button",
+        class: "cf-more-btn",
+        "aria-expanded": String(!!s.moreOpen),
+        "aria-controls": bodyId,
+        onclick: (e) => {
+          s.moreOpen = !s.moreOpen;
+          moreBody.hidden = !s.moreOpen;
+          e.currentTarget.setAttribute("aria-expanded", String(s.moreOpen));
+        },
+      },
+      "Więcej",
+    );
+    return h(
+      "li",
+      { class: "cf-sig" },
+      h("input", {
+        "data-autofocus": s.focusMe ? (delete s.focusMe, "") : null,
+        class: `cf-sig-text${s.isRegex ? " mono" : ""}`,
+        spellcheck: "false",
+        "aria-label": label,
+        placeholder: kind === "neg" ? "np. wyrok" : "np. pełnomocnictwo",
+        value: s.text,
+        oninput: (e) => {
+          s.text = e.target.value;
+          changed();
+        },
+      }),
+      h("label", { class: "cf-inline" }, h("span", { class: "cf-inline-lbl", text: "Ważność" }), weightSelect(s, `${label} — ważność`)),
+      check(s, "head", "Tylko w nagłówku dokumentu", { title: "Szukaj tylko na początku dokumentu (np. w tytule)" }),
+      moreBtn,
+      btn(
+        "Usuń",
+        () => {
+          list.splice(list.indexOf(s), 1);
+          rerender();
+        },
+        { class: "btn small ghost", "aria-label": `Usuń: ${label}` },
+      ),
+      moreBody,
+    );
   };
-  const sec2 = h(
-    "fieldset",
-    { class: "cf-sec" },
-    h("legend", { text: "2. Rozpoznawanie dokumentu" }),
-    hint("System sumuje wagi wyrażeń znalezionych w treści dokumentu. Gdy suma osiągnie próg, dokument zostaje uznany za tę klasę. Wielkość liter i polskie znaki zwykle nie mają znaczenia."),
-    labelled("Próg rozpoznania (min. suma punktów)", num(m, "min_score", { min: "0", class: "cf-short" })),
-    sigList(m.signals, "Słowa i wyrażenia charakterystyczne", "Teksty typowe dla tego dokumentu, np. jego tytuł. Każde trafienie dodaje swoją wagę.", "+ dodaj wyrażenie"),
-    sigList(m.negative, "Wyrażenia wykluczające", "Teksty, które świadczą, że to INNY dokument — każde trafienie odejmuje swoją wagę.", "+ dodaj wyrażenie wykluczające"),
+
+  const advRow = (s) => {
+    const parts = [WEIGHTS.find(([w]) => w === s.weight)?.[1] || `waga ${s.weight}`];
+    if (s.head) parts.push("tylko w nagłówku");
+    if (s.cs) parts.push("wielkość liter ma znaczenie");
+    return h("li", { class: "cf-adv-row" }, h("code", { text: s.text }), h("span", { class: "muted small", text: parts.join(" · ") }));
+  };
+
+  const phraseList = (list, kind, title, help, addLabel) => {
+    const simple = list.filter((s) => !s.adv);
+    const adv = list.filter((s) => s.adv);
+    const kids = [
+      h("h4", { text: title }),
+      hint(help),
+      simple.length
+        ? h("ul", { class: "cf-sigs" }, simple.map((s, i) => phraseRow(s, list, i + 1, kind)))
+        : h("p", { class: "muted small", text: adv.length ? "Brak zwykłych fraz — dodaj własną." : "Brak fraz." }),
+      btn(addLabel, () => {
+        list.push({ ...newSignal(), focusMe: true });
+        rerender();
+      }),
+    ];
+    if (adv.length)
+      kids.push(
+        h(
+          "details",
+          { class: "cf-advgroup" },
+          h("summary", { text: `Wyrażenia zaawansowane (dla informatyków): ${adv.length}` }),
+          hint("Te wzorce przygotował informatyk w specjalnym zapisie. Działają razem z frazami powyżej. Można je zmienić tylko w trybie zaawansowanym (YAML)."),
+          h("ul", { class: "cf-adv-list" }, adv.map(advRow)),
+        ),
+      );
+    return h("div", { class: "cf-siglist", "data-kind": kind }, ...kids);
+  };
+
+  const sec2 = section(
+    "Jak rozpoznać dokument",
+    "Wpisz zwroty, które zwykle występują w tym dokumencie (np. jego tytuł). Każda znaleziona fraza daje punkty — Niska 1, Średnia 2, Wysoka 4. Wielkość liter i polskie znaki zwykle nie mają znaczenia.",
+    phraseList(m.signals, "pos", "Dokument zawiera…", "Typowe zwroty i słowa z tego dokumentu.", "+ Dodaj frazę"),
+    phraseList(m.negative, "neg", "Wyklucz, jeśli dokument zawiera…", "Zwroty, które świadczą, że to INNY dokument — odejmują punkty.", "+ Dodaj frazę wykluczającą"),
+    field(
+      "Wymagana liczba punktów",
+      num(m, "min_score", { min: "0", class: "cf-short" }),
+      "Dokument zostaje rozpoznany, gdy suma punktów osiągnie tę wartość. Np. 4 = wystarczy jedna fraza o wysokiej ważności albo dwie o średniej.",
+    ),
   );
 
   // ---------------------------------------------------------------- 3. ekstrakcja
   const modes = meta.extraction_modes || [];
-  const modeOpts = [["", "domyślny z ustawień"], ...modes.map((v) => [v, MODE_LABELS[v] || v])];
+  const modeOpts = [["", "Domyślny (ustawienie programu)"], ...modes.map((v) => [v, MODE_LABELS[v] || v])];
   if (m.mode && !modes.includes(m.mode)) modeOpts.push([m.mode, m.mode]);
-  const sec3 = h(
-    "fieldset",
-    { class: "cf-sec" },
-    h("legend", { text: "3. Sposób ekstrakcji" }),
-    hint("„LLM” — model językowy wyszukuje wartości na podstawie opisów pól (najprostsze, nie wymaga reguł). „Reguły” — etykiety i wzorce z sekcji „Zaawansowane” przy polach. „Reguły + LLM” — reguły, a model uzupełnia brakujące pola."),
-    modes.length ? labelled("Tryb", select(m, "mode", modeOpts)) : h("p", { class: "muted small", text: "Ta wersja programu nie obsługuje wyboru trybu dla klasy — używany jest tryb z ustawień." }),
-    labelled("Dodatkowe wskazówki dla modelu", text(m, "instructions", { rows: 4, placeholder: "np. Kwoty podawaj w złotych; daty w formacie RRRR-MM-DD; brak danych → null." })),
+  const modeHelp = h("small", { class: "cf-help", text: MODE_HELP[m.mode] ?? "" });
+  const modeSel = select(m, "mode", modeOpts, (v) => {
+    modeHelp.textContent = MODE_HELP[v] ?? "";
+    changed();
+  });
+  modeSel.id = nextId("cf");
+  modeHelp.id = `${modeSel.id}-help`;
+  modeSel.setAttribute("aria-describedby", modeHelp.id);
+  const sec3 = section(
+    "Jak odczytywać dane",
+    null,
+    modes.length
+      ? h("div", { class: "cf-lbl" }, h("label", { for: modeSel.id, text: "Sposób odczytu" }), modeSel, modeHelp)
+      : h("p", { class: "muted small", text: "Ta wersja programu używa sposobu odczytu ustawionego dla całego programu." }),
+    field(
+      "Dodatkowe wskazówki dla modelu językowego",
+      text(m, "instructions", { rows: 3, placeholder: "np. Kwoty podawaj w złotych; daty w formacie RRRR-MM-DD; gdy brak danych — zostaw puste." }),
+      "Opcjonalnie. Pisz zwykłym językiem.",
+    ),
   );
 
   // ---------------------------------------------------------------- 4. pola
@@ -389,7 +571,7 @@ export function renderForm(root, m, ctx) {
       { class: "cf-fields" },
       nodes.map((n, i) => fieldCard(n, nodes, i, depth)),
       btn(addLabel, () => {
-        nodes.push(newField());
+        nodes.push({ ...newField(), focusMe: true });
         rerender();
       }),
     );
@@ -400,100 +582,119 @@ export function renderForm(root, m, ctx) {
     rerender();
   };
 
-  const fieldBody = (n, depth) => {
+  const descInput = (n, group = false) =>
+    text(n, "description", {
+      "data-autofocus": n.focusMe ? (delete n.focusMe, "") : null,
+      rows: 2,
+      class: "cf-desc",
+      placeholder: group ? "np. Dane przelewu z potwierdzenia bankowego." : "np. Data wystawienia dokumentu, zapisana jako RRRR-MM-DD.",
+    });
+
+  const advanced = (n) => {
     const extra = Object.keys(n.orig).filter((k) => !HANDLED.has(k));
-    const adv = h(
+    return h(
       "details",
       { class: "cf-adv" },
-      h("summary", { text: "Zaawansowane — dla reguł" }),
-      hint("Potrzebne tylko w trybie „Reguły” / „Reguły + LLM”. W trybie LLM wystarczy dobry opis pola."),
+      h("summary", { text: "Ustawienia dla informatyków" }),
+      hint("Potrzebne tylko przy odczycie regułami. Przy modelu językowym wystarczy dobry opis pola."),
       h(
         "div",
         { class: "cf-grid2" },
-        labelled("Etykiety (jedna w wierszu)", lines(n, "labels", "np. Data wystawienia"), "Tekst przed wartością w dokumencie, np. „NIP:”"),
-        labelled("Wzorce — wyrażenia regularne (jeden w wierszu)", lines(n, "patterns", "np. NIP[:\\s]*(?P<value>\\d{10})"), "Wartość = grupa (?P<value>…) albo pierwsza grupa"),
+        field("Etykiety (jedna w wierszu)", lines(n, "labels", "np. Data wystawienia"), "Tekst przed wartością w dokumencie, np. „NIP:”"),
+        field("Wzorce — wyrażenia regularne (jeden w wierszu)", lines(n, "patterns", "np. NIP[:\\s]*(?P<value>\\d{10})"), "Wartość = grupa (?P<value>…) albo pierwsza grupa"),
       ),
-      h("div", { class: "cf-lbl" }, h("span", { text: "Normalizatory (porządkowanie wartości)" }), checks(n, "normalize", meta.normalizers)),
-      h("div", { class: "cf-lbl" }, h("span", { text: "Walidatory (kontrola poprawności)" }), checks(n, "validators", meta.validators)),
+      h("div", { class: "cf-lbl" }, h("span", { class: "cf-lbl-text", text: "Porządkowanie wartości (normalizatory)" }), checks(n, "normalize", meta.normalizers)),
+      h("div", { class: "cf-lbl" }, h("span", { class: "cf-lbl-text", text: "Kontrola poprawności (walidatory)" }), checks(n, "validators", meta.validators)),
       h(
         "div",
         { class: "cf-grid2" },
-        labelled("Słownik wartości", select(n, "dictionary", dictOpts(n.dictionary))),
-        labelled("Sprawdzanie, czy wartość występuje w tekście", select(n, "ground", meta.grounds.map((g) => [g, GROUND_LABELS[g] || g]))),
+        field("Słownik wartości", select(n, "dictionary", dictOpts(n.dictionary))),
+        field("Sprawdzanie, czy wartość występuje w tekście", select(n, "ground", meta.grounds.map((g) => [g, GROUND_LABELS[g] || g]))),
       ),
-      extra.length ? h("p", { class: "muted small", text: `Inne ustawienia tego pola (zachowane bez zmian, edycja w trybie YAML): ${extra.join(", ")}` }) : null,
+      extra.length ? h("p", { class: "muted small", text: `Inne ustawienia tego pola (zachowane bez zmian, edycja w trybie zaawansowanym): ${extra.join(", ")}` }) : null,
     );
-    return [
-      labelled(
-        "Opis — najważniejsze: na jego podstawie model językowy szuka wartości",
-        text(n, "description", { rows: 2, placeholder: "np. Data wystawienia dokumentu, w formacie RRRR-MM-DD." }),
-      ),
-      n.type === "object" ? h("div", { class: "cf-sub" }, h("h4", { text: "Pola w tej grupie" }), fieldList(n.children, depth + 1, "+ dodaj pole w grupie")) : null,
-      n.type === "array"
-        ? h(
-            "div",
-            { class: "cf-sub" },
-            h("h4", { text: "Element listy" }),
-            labelled("Typ elementu", select(n.items, "type", typeOpts.filter(([t]) => t !== "array"), onType(n.items))),
-            fieldBody(n.items, depth + 1),
-          )
-        : null,
-      n.type === "object" || n.type === "array" ? null : adv,
-    ];
   };
 
+  const fieldBody = (n, depth) => [
+    n.type === "object" ? h("div", { class: "cf-sub" }, h("h4", { text: "Pola w tej grupie" }), fieldList(n.children, depth + 1, "+ Dodaj pole w grupie")) : null,
+    n.type === "array"
+      ? h(
+          "div",
+          { class: "cf-sub" },
+          h("h4", { text: "Każdy element listy" }),
+          field("Rodzaj elementu", select(n.items, "type", typeOpts.filter(([t]) => t !== "array"), onType(n.items))),
+          n.items.type === "object" ? null : field("Opis elementu", descInput(n.items)),
+          fieldBody(n.items, depth + 1),
+        )
+      : null,
+    n.type === "object" || n.type === "array" ? null : advanced(n),
+  ];
+
   const fieldCard = (n, siblings, i, depth) => {
-    const sumKey = h("strong", { text: n.key || "(bez nazwy)" });
-    const sumDesc = h("span", { class: "muted", text: n.description ? ` — ${n.description.split("\n")[0].slice(0, 90)}` : "" });
+    const human = (k) => (k ? humanizeKey(k) : "(nowe pole)");
+    const sumKey = h("strong", { text: human(n.key) });
+    const sumDesc = h("span", { class: "cf-sum-desc", text: n.description ? n.description.split("\n")[0] : "" });
     const move = (d) => () => {
       const j = i + d;
       if (j < 0 || j >= siblings.length) return;
       [siblings[i], siblings[j]] = [siblings[j], siblings[i]];
       rerender();
     };
-    const card = h(
+    const keyInput = text(n, "key", {
+      spellcheck: "false",
+      class: "mono",
+      placeholder: "np. data_wystawienia",
+      after: (t) => (sumKey.textContent = human(t.value)),
+    });
+    return h(
       "details",
       { class: "cf-field", open: (n.open ?? (depth === 0 || !!n.isNew)) || null, ontoggle: (e) => (n.open = e.target.open) },
-      h("summary", {}, sumKey, h("span", { class: "cf-type", text: ` ${TYPE_LABELS[n.type] || n.type}` }), sumDesc),
+      h("summary", {}, sumKey, h("span", { class: "cf-type", text: TYPE_LABELS[n.type] || n.type }), sumDesc),
+      n.type === "object" ? null : field("Opis pola", descInput(n), "Opisz pole tak, jak koledze z pracy — co to za wartość i jak ją rozpoznać.", "cf-desc-wrap"),
       h(
         "div",
         { class: "cf-row" },
-        labelled("Nazwa pola w JSON", text(n, "key", { spellcheck: "false", placeholder: "np. data_wystawienia", after: (t) => (sumKey.textContent = t.value || "(bez nazwy)") })),
-        labelled("Typ", select(n, "type", typeOpts, onType(n))),
+        field("Nazwa pola w wyniku", keyInput, "Małe litery, bez spacji, np. data_wystawienia."),
+        field("Rodzaj", select(n, "type", typeOpts, onType(n))),
         h(
           "div",
-          { class: "cf-tools" },
-          btn("↑", move(-1), { title: "Przesuń wyżej", disabled: i === 0 ? true : null }),
-          btn("↓", move(1), { title: "Przesuń niżej", disabled: i === siblings.length - 1 ? true : null }),
-          btn("Usuń pole", () => {
-            if (n.children?.length && !confirm(`Usunąć pole „${n.key}” razem z polami podrzędnymi?`)) return;
-            siblings.splice(i, 1);
-            rerender();
-          }, { class: "btn small ghost" }),
+          { class: "cf-tools", role: "group", "aria-label": "Kolejność i usuwanie" },
+          btn("↑", move(-1), { title: "Przesuń wyżej", "aria-label": "Przesuń pole wyżej", disabled: i === 0 ? true : null }),
+          btn("↓", move(1), { title: "Przesuń niżej", "aria-label": "Przesuń pole niżej", disabled: i === siblings.length - 1 ? true : null }),
+          btn(
+            "Usuń pole",
+            () => {
+              if (n.children?.length && !confirm(`Usunąć pole „${n.key}” razem z polami w tej grupie?`)) return;
+              siblings.splice(i, 1);
+              rerender();
+            },
+            { class: "btn small ghost" },
+          ),
         ),
       ),
+      n.type === "object" ? field("Opis grupy (opcjonalnie)", descInput(n, true)) : null,
       fieldBody(n, depth),
     );
-    return card;
   };
 
-  const sec4 = h(
-    "fieldset",
-    { class: "cf-sec" },
-    h("legend", { text: "4. Pola wyniku (struktura JSON)" }),
-    hint("Każde pole to jedna wartość w wynikowym pliku JSON. Grupa pól tworzy zagnieżdżony obiekt, lista — powtarzające się elementy (np. kilku wykonawców)."),
-    fieldList(m.fields, 0, "+ dodaj pole"),
+  const sec4 = section(
+    "Dane do odczytania",
+    "Każde pole to jedna wartość w wyniku. „Grupa pól” łączy kilka pól (np. dane zamawiającego), „lista” — powtarzające się elementy (np. kilku pełnomocników).",
+    fieldList(m.fields, 0, "+ Dodaj pole"),
   );
 
-  const banner = ctx.losses?.length
-    ? h(
-        "div",
-        { class: "alert warn" },
-        h("strong", { text: "Ta klasa ma elementy, których formularz nie zachowa przy zapisie: " }),
-        ctx.losses.join("; ") + ". ",
-        "Zalecamy edycję tej klasy w trybie YAML. Samo przełączenie bez zmian niczego nie usuwa.",
-      )
-    : null;
+  const onlyComments = ctx.losses?.length && ctx.losses.every((l) => /komentarz/i.test(l));
+  const banner = !ctx.losses?.length
+    ? null
+    : onlyComments
+      ? h("p", { class: "cf-note", text: "Zapis z formularza pominie notatki techniczne zapisane w pliku konfiguracji. Wszystkie ustawienia zostaną zachowane." })
+      : h(
+          "div",
+          { class: "alert warn" },
+          h("strong", { text: "Uwaga: " }),
+          "ten typ ma ustawienia, których formularz nie zachowa przy zapisie (" + ctx.losses.join("; ") + "). ",
+          "Jeśli chcesz coś zmienić, poproś informatyka o edycję w trybie zaawansowanym. Samo przeglądanie niczego nie zmienia.",
+        );
 
   root.replaceChildren(...[banner, sec1, sec2, sec3, sec4].filter(Boolean));
 }
