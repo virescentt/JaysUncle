@@ -1,6 +1,6 @@
 # Odwołania2JSON — analiza zadania i warianty rozwiązania (PL)
 
-> Dla zespołu: Ja, Sewa, Artem, Lesza · 21.11.2026 · Wersja rosyjska: [WARIANTY_RU.md](WARIANTY_RU.md)
+> Dla zespołu: Polina, Sewa, Artem, Lesza · 21.11.2026 · Wersja rosyjska: [WARIANTY_RU.md](WARIANTY_RU.md)
 
 ## TL;DR
 
@@ -254,7 +254,7 @@ Różnice między wariantami: w **A** zbędne są `llm/` i `extract/llm.py`, w *
 
 ## 9. Wstępnie — kto co robi (ostateczny podział po wyborze wariantu)
 
-- **Ja (Claude Code):** rdzeń potoku, ekstrakcja LLM, scalanie i weryfikacja, integracja, review PR-ów.
+- **Polina (Claude Code):** rdzeń potoku, ekstrakcja LLM, scalanie i weryfikacja, integracja, review PR-ów.
 - **Sewa:** ingest i OCR (Tesseract/RapidOCR), syntetyczne skany, Docker.
 - **Lesza:** reguły i ekstraktory regex w YAML, analiza błędów z ewaluacji, słownik czynności.
 - **Artem:** normalizatory i walidatory (według testów-specyfikacji), interfejs webowy, dokumentacja i prezentacja.

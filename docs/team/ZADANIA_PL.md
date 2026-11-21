@@ -16,13 +16,13 @@ pytest -q                                      # wszystko zielone; 43 testy "ski
 **Zasady:**
 - Własna gałąź `feat/<imię>-<co>`, małe PR-y do `master`. Przed PR: `pytest -q`, `ruff check .`, `python -m evaluation.run_eval`. W opisie PR — **F1 przed → po**.
 - **W VS Code wszystko jednym przyciskiem:** `Cmd/Ctrl+Shift+P` → `Tasks: Run Test Task` → „✅ Przed PR”. Przed rozpoczęciem pracy, na świeżym `master`, uruchomcie raz `Tasks: Run Task` → „Eval: zapisz baseline”. Wtedy „Przed PR” sam wypisze `F1: przed → po` do opisu PR. Zadania działają na macOS i Windows.
-- Nie ruszamy cudzych plików bez uzgodnienia. Wspólne pliki (`spec.py`, `models.py`, `pipeline.py`) zmieniamy tylko przeze mnie.
+- Nie ruszamy cudzych plików bez uzgodnienia. Wspólne pliki (`spec.py`, `models.py`, `pipeline.py`) zmieniamy tylko przez Polinę.
 - **Praca z webowym LLM:** wklejacie do czatu (1) cały swój plik, (2) testy do niego, (3) odpowiedni YAML z `config/doc_types/`, (4) zdanie „zaimplementuj TODO, nie zmieniaj sygnatur funkcji”. Wynik → `pytest` → PR.
 - Debugowanie: `python -m odwolania2json inspect plik.pdf` (tekst stron), `... classify plik.pdf` (punkty klas). Błędy według pól — w `runs/<czas>/report.json`, sekcja `errors`.
 
 ---
 
-## Ja (Claude Code) — rdzeń, LLM, integracja
+## Polina (Claude Code) — rdzeń, LLM, integracja
 
 1. **Pierwsza godzina: pytania do mentorów** (lista w WARIANTY_PL.md §8). Najważniejsze: jak liczone jest F1, jak jury uruchomi rozwiązanie i jaki LLM będzie miało, co oznacza `czynnosc_powod_id = 12`.
 2. **Endpoint LLM**: lokalna Ollama (Qwen3) i/lub darmowe API modelu z otwartymi wagami. Wpisać do `.env.example`, przekazać zespołowi.
@@ -71,7 +71,7 @@ pytest -q                                      # wszystko zielone; 43 testy "ski
    - jasny i ciemny motyw, dobry wygląd na laptopie i na projektorze.
    - API i format odpowiedzi: `odwolania2json/api/app.py` (docstring na górze). Uruchomienie: `./start.sh web` → http://localhost:8000
 3. **Dokumentacja:** `docs/NOWA_KLASA_DOKUMENTU.md` (przykład krok po kroku), `docs/ARCHITEKTURA.md`, dopracowanie README — bliżej końca.
-4. **Prezentacja** (razem ze mną): problem → architektura → F1 → demo na żywo (dodanie nowej klasy YAML w 5 minut).
+4. **Prezentacja** (razem z Poliną): problem → architektura → F1 → demo na żywo (dodanie nowej klasy YAML w 5 minut).
 
 **Gotowe, gdy:** panel pokazuje wgranie → JSON → podświetlenie źródła; wszystkie testy normalizatorów są zielone.
 
@@ -84,6 +84,6 @@ pytest -q                                      # wszystko zielone; 43 testy "ski
 
 ## Co się zmienia, jeśli wybierzemy inny wariant
 
-- **A (tylko reguły):** moje punkty 3–5 przechodzą na pomoc Leszy (reguły dla czynności i imion). LLM niepotrzebny, `EXTRACTION_MODE=rules`.
+- **A (tylko reguły):** punkty 3–5 Poliny przechodzą na pomoc Leszy (reguły dla czynności i imion). LLM niepotrzebny, `EXTRACTION_MODE=rules`.
 - **B (tylko LLM):** Lesza zamiast `rules.py` robi weryfikację wartości z LLM w tekście i analizę błędów promptów. `EXTRACTION_MODE=llm`.
 - Zadania Sewy i Artema nie zmieniają się w żadnym wariancie.
