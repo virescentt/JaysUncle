@@ -8,7 +8,7 @@ Pomiar z 21.11.2026, tryb `rules` (same reguły, bez LLM). Wyniki z LLM (tryb `h
 |---|---|---|---|---|---|---|---|
 | Sprawy syntetyczne organizatora (60 spraw) | 180 PDF | **1.000** | 1.000 | 1.000 | 2032 | 0 | 0 |
 | Dokumenty negatywne | 16 PDF | — | — | — | — | 0 | — |
-| **Skany organizatora organizatora** (bez warstwy tekstowej, OCR) | 30 PDF | **0.969** | 0.971 | 0.968 | 299 | 9 | 10 |
+| **Skany organizatora** (bez warstwy tekstowej, OCR) | 30 PDF | **0.969** | 0.971 | 0.968 | 299 | 9 | 10 |
 
 - Wszystkie 16 dokumentów negatywnych (ogłoszenia TED/BZP, decyzje, wyrok KIO, broszura itp.) dostają pusty plik `.json` (0 bajtów), zgodnie z README organizatora.
 - Klasyfikacja: sprawy syntetyczne **180/180**, skany **30/30**, dokumenty negatywne **16/16** (żaden nie został przypisany do klasy).

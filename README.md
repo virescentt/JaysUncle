@@ -28,7 +28,7 @@ Pomiar z 21.11.2026 w trybie reguł (bez LLM), metryka F1 po polach ([`evaluatio
 
 | Zbiór | Dokumenty | F1 | Klasyfikacja |
 |---|---|---|---|
-| Skany organizatora organizatora (OCR) | 30 | **0.969** (P 0.971, R 0.968) | 30/30 |
+| Skany organizatora (OCR) | 30 | **0.969** (P 0.971, R 0.968) | 30/30 |
 | Sprawy syntetyczne organizatora | 180 (60 spraw) | **1.000** | 180/180 |
 | Dokumenty negatywne (→ pusty `.json`) | 16 | 0 FP | 16/16 |
 
@@ -152,7 +152,7 @@ Przydatne komendy (`python -m odwolania2json …`):
 ```bash
 python scripts/fetch_data.py --sample-input 3   # dane UZP → data/uzp/ (+ 3 sprawy do input/)
 python -m evaluation.run_eval                    # 60 spraw syntetycznych + dokumenty negatywne (~20 s)
-python -m evaluation.run_eval --subset scans     # 30 skanów organizatora organizatora (OCR, kilka minut)
+python -m evaluation.run_eval --subset scans     # 30 skanów organizatora (OCR, kilka minut)
 python -m evaluation.run_eval --subset negatives # dokumenty negatywne z dane/negatywne
 python -m evaluation.run_eval --mode rules --limit 10
 python scripts/make_scans.py && python -m evaluation.run_eval --data data/scans/dane   # syntetyczne skany
