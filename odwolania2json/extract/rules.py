@@ -44,11 +44,15 @@ _FILLER = {"", "nr", "numer", "no"}  # allowed between a mid-sentence label and 
 _OPEN_Q, _CLOSE_Q = "„“\"«", "”“\"»"
 _LEADER = " \t.:_-"  # separators between a label and its value ("Label ..... value")
 _WRAP_MIN = 60  # a first line at least this long is assumed to be wrapped
+_TAIL_LABEL = re.compile(r"^([^\W\d_]+(?:[ \t]+[^\W\d_]+){0,2})[ \t]*:[ \t]*")  # "operacji: CEN…" → "CEN…"
+_KEYVAL = re.compile(r"^\s*[^\W\d_][\w ]{0,30}?\s*(?::|\.{3,})")  # "Status: …", "Kanał ..... …" = a new field
 
 
 def _wrapped(raw: str, so_far: str, widths: list[int]) -> bool:
     """Is `raw` the continuation of a wrapped value? `widths` = physical lengths of the lines taken so far."""
     first = raw.split(None, 1)[0]
+    if any(ch.isdigit() for ch in first) and len(raw.split()) <= 2:
+        return True  # a short tail like "CEN2603035366536" or "ZP.169.2026 CEN…"  
     if first[0].islower() or _open_quote(so_far):
         return True
     if len(widths) == 1:
@@ -121,6 +125,9 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
         if before.strip() and (len(before.split()) > 3 or re.search(r"[\d:;,]", before)):
             continue
         rest = after.lstrip(_LEADER)
+        tail = _TAIL_LABEL.match(rest)
+        if tail:
+            rest = rest[tail.end():]  # start offset below is computed from len(rest), so it follows automatically
         residual = all_re.sub("", rest).strip(_LEADER)
         lines: list[tuple[int, int]] = []
         widths: list[int] = []
@@ -138,7 +145,7 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
             if not raw.strip():
                 if lines:
                     break
-            elif all_re.search(raw):
+            elif all_re.search(raw) or _KEYVAL.match(raw):
                 break
             else:
                 if lines and not _wrapped(raw, folded[lines[0][0] : lines[-1][1]], widths):
