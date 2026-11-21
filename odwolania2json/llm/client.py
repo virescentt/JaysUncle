@@ -51,14 +51,36 @@ class LLMClient:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def from_settings(cls, settings: LLMSettings) -> LLMClient | None:
+    def from_settings(cls, settings: LLMSettings, check: bool = True) -> LLMClient | None:
+        """Client or None. With check=True an unreachable server is detected ONCE here (one warning,
+        pipeline continues in rules-only mode) instead of failing on every document."""
         if not settings.enabled:
             return None
         try:
-            return cls(settings)
+            client = cls(settings)
         except Exception as e:  # noqa: BLE001
             log.warning("LLM client unavailable: %s", e)
             return None
+        if check and not client.is_reachable():
+            log.warning(
+                "LLM niedostępny pod %s — pracuję w trybie reguł. Uruchom serwer LLM albo ustaw "
+                "EXTRACTION_MODE=rules w .env, żeby ukryć to ostrzeżenie.",
+                settings.base_url,
+            )
+            return None
+        return client
+
+    def is_reachable(self) -> bool:
+        """Quick connectivity check (GET /models). Only connection problems count as 'unreachable'."""
+        from openai import APIConnectionError, APITimeoutError
+
+        try:
+            self.client.with_options(timeout=5, max_retries=0).models.list()
+        except (APIConnectionError, APITimeoutError):
+            return False
+        except Exception:  # noqa: BLE001 — e.g. /models not implemented or auth error: let real calls decide
+            return True
+        return True
 
     # ------------------------------------------------------------------ cache
     def _key(self, *parts: Any) -> str:
