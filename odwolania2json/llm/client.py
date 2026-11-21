@@ -61,26 +61,41 @@ class LLMClient:
         except Exception as e:  # noqa: BLE001
             log.warning("LLM client unavailable: %s", e)
             return None
-        if check and not client.is_reachable():
-            log.warning(
-                "LLM niedostępny pod %s — pracuję w trybie reguł. Uruchom serwer LLM albo ustaw "
-                "EXTRACTION_MODE=rules w .env, żeby ukryć to ostrzeżenie.",
-                settings.base_url,
-            )
-            return None
+        if check:
+            problem = client.check_available()
+            if problem:
+                log.warning("LLM wyłączony (%s) — pracuję w trybie reguł. %s", settings.base_url, problem)
+                return None
         return client
 
     def is_reachable(self) -> bool:
-        """Quick connectivity check (GET /models). Only connection problems count as 'unreachable'."""
-        from openai import APIConnectionError, APITimeoutError
+        return self.check_available() is None
+
+    def check_available(self) -> str | None:
+        """One quick check (GET /models) before processing. Returns None if the LLM is usable, otherwise a
+        human-readable reason: server unreachable, missing/invalid API key, model not available.
+        Unknown errors (e.g. a server without /models) → assume usable and let the real calls decide."""
+        from openai import APIConnectionError, APITimeoutError, AuthenticationError, PermissionDeniedError
 
         try:
-            self.client.with_options(timeout=5, max_retries=0).models.list()
+            page = self.client.with_options(timeout=10, max_retries=0).models.list()
         except (APIConnectionError, APITimeoutError):
-            return False
-        except Exception:  # noqa: BLE001 — e.g. /models not implemented or auth error: let real calls decide
-            return True
-        return True
+            return "Serwer nie odpowiada — uruchom serwer LLM albo ustaw EXTRACTION_MODE=rules w .env."
+        except (AuthenticationError, PermissionDeniedError):
+            hint = "brak klucza" if not self.settings.api_key else "klucz odrzucony"
+            return f"Błąd autoryzacji ({hint}) — wpisz poprawny LLM_API_KEY w pliku .env."
+        except Exception:  # noqa: BLE001
+            return None
+        try:
+            ids = [m.id for m in page.data]
+        except Exception:  # noqa: BLE001
+            return None
+        # Ollama lists models as "name:tag" (accept "name" == "name:latest"); ids compared case-insensitively
+        wanted = {self.settings.model.lower(), f"{self.settings.model}:latest".lower()}
+        if not wanted & {i.lower() for i in ids}:
+            shown = ", ".join(sorted(ids)[:12]) or "brak (np. model jeszcze się pobiera)"
+            return f"Model „{self.settings.model}” nie jest dostępny na serwerze. Dostępne: {shown}."
+        return None
 
     # ------------------------------------------------------------------ cache
     def _key(self, *parts: Any) -> str:
@@ -108,6 +123,8 @@ class LLMClient:
                 "temperature": self.settings.temperature,
                 "max_tokens": self.settings.max_tokens,
             }
+            if self.settings.extra_body:
+                kwargs["extra_body"] = self.settings.extra_body
             if self.mode == "json_schema" and schema is not None:
                 kwargs["response_format"] = {
                     "type": "json_schema",
@@ -143,5 +160,10 @@ class LLMClient:
 
 
 def _is_unsupported_format(e: Exception) -> bool:
+    """The server rejected the requested JSON mode → step down (json_schema → json_object → prompt).
+    E.g. Ollama's MLX runner answers 501 'structured output is unavailable'."""
     msg = str(e).lower()
-    return "response_format" in msg or "json_schema" in msg or "not supported" in msg
+    if getattr(e, "status_code", None) == 501:
+        return True
+    markers = ("response_format", "json_schema", "not supported", "structured output", "unsupported")
+    return any(k in msg for k in markers)

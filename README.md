@@ -40,14 +40,17 @@ PDF ─► INGEST (pdfplumber; skan → OCR Tesseract/RapidOCR)
 
 ## Wymagania
 
-- **Python 3.13+**
-- OCR dla skanów działa od razu po `pip install` (RapidOCR). Opcjonalnie **Tesseract z językiem polskim** — lepiej radzi sobie z polskimi znakami:
+- **Windows, macOS lub Linux** — obsługiwane wszystkie (skrypty `.bat` dla Windows, `.sh` dla macOS/Linux).
+- **Python 3.13+** — [python.org/downloads](https://www.python.org/downloads/) (Windows: przy instalacji zaznacz „Add python.exe to PATH”). Jeśli go brak, `start.bat` / `start.sh` wyświetli komunikat z linkiem i zakończy działanie, niczego nie instalując.
+- **Internet** — do wywołań API LLM (OVHcloud AI Endpoints, serwery w UE) i do instalacji zależności przy pierwszym uruchomieniu. Bez internetu lub bez klucza API aplikacja nadal działa — w trybie reguł (bez LLM).
+- OCR skanów działa od razu po instalacji (RapidOCR, bez programów systemowych). Opcjonalnie **Tesseract z językiem polskim**:
   - macOS: `brew install tesseract tesseract-lang`
   - Ubuntu/Debian: `sudo apt install tesseract-ocr tesseract-ocr-pol`
   - Windows: [instalator UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) (zaznacz język *Polish*)
-- (opcjonalnie) endpoint LLM z modelem open-source — np. lokalna [Ollama](https://ollama.com): `ollama pull qwen3:8b`
 
 ## Instalacja
+
+Najprościej: **nic nie instaluj ręcznie** — przy pierwszym uruchomieniu `start.bat` / `start.sh` sam tworzy środowisko `.venv` i instaluje zależności (`pip install -r requirements.txt`). Poniżej instalacja krok po kroku, jeśli wolisz zrobić to osobno.
 
 **macOS / Linux**
 ```bash
@@ -77,23 +80,38 @@ docker compose --profile local-llm up -d ollama  # opcjonalnie: lokalny LLM (CPU
 
 ## Konfiguracja LLM (`.env`)
 
+Klucz API **nie jest** w repozytorium — wpisujemy go do pliku `.env` (kopia `.env.example`, tworzona automatycznie przy instalacji). Dla jury: klucz podajemy w formularzu zgłoszenia.
+
 ```ini
-LLM_BASE_URL=http://localhost:11434/v1   # Ollama / vLLM / inny serwer zgodny z OpenAI
-LLM_API_KEY=ollama
-LLM_MODEL=qwen3:8b                       # model z otwartymi wagami
-EXTRACTION_MODE=hybrid                   # rules | llm | hybrid
-OCR_ENGINE=auto                          # auto | tesseract | rapidocr | none
+# Model open-source przez API z serwerami w UE (OVHcloud AI Endpoints, Francja)
+LLM_BASE_URL=https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
+LLM_API_KEY=<klucz>
+LLM_MODEL=Olala-v1.0-mini-7A1B   # wybór modelu: w trakcie porównania (patrz docs/team)
+
+EXTRACTION_MODE=hybrid     # rules | llm | hybrid
+OCR_ENGINE=auto            # auto | rapidocr | easyocr | tesseract | none
 ```
 
-Bez skonfigurowanego LLM aplikacja działa w trybie reguł.
+Do rozwoju lokalnego można użyć dowolnego serwera zgodnego z OpenAI, np. [Ollama](https://ollama.com) (`ollama pull qwen3.5:9b`, `LLM_BASE_URL=http://localhost:11434/v1`). Jeśli LLM jest niedostępny (brak klucza, brak internetu, model nie istnieje), aplikacja wypisze jeden komunikat z przyczyną i przetworzy dokumenty w trybie reguł.
 
 ## Uruchomienie
 
-```bash
-./start.sh                       # Windows: start.bat   →  przetwarza ./input → ./output
-./start.sh web                   # interfejs webowy: http://localhost:8000
-./start.sh --help                # wszystkie komendy
+**Windows**
+```bat
+REM przetwarza .\input → .\output (pierwsze uruchomienie: automatyczna instalacja)
+start.bat
+REM panel webowy → otwórz http://localhost:8000
+start.bat web
 ```
+
+**macOS / Linux**
+```bash
+./start.sh                # przetwarza ./input → ./output (pierwsze uruchomienie: automatyczna instalacja)
+./start.sh web            # panel webowy → otwórz http://localhost:8000
+./start.sh --help         # wszystkie komendy
+```
+
+Panel webowy działa lokalnie (serwer w Pythonie na tym samym komputerze) — niczego nie trzeba hostować.
 
 Przydatne komendy (`python -m odwolania2json …`):
 
