@@ -52,6 +52,31 @@ def digits_only(value):
 
 @normalizer("strip_quotes")
 def strip_quotes(value):
+
+    if value is None:
+        return None
+
+    text = str(value).strip()
+
+    quote_pairs = [
+        ("„", "”"),
+        ("«", "»"),
+        ('"', '"'),
+        ("'", "'"),
+    ]
+
+    for left, right in quote_pairs:
+        if text.startswith(left) and text.endswith(right):
+            text = text[1:-1].strip()
+            return text or None
+
+        if text.startswith(left):
+            tmp = text.rstrip(" ,.;:!?")
+            if tmp.endswith(right):
+                text = tmp[1:-1].strip()
+                return text or None
+
+    return text or None
     """Remove surrounding quotes of any kind and trailing punctuation.
 
     Examples:
@@ -60,11 +85,31 @@ def strip_quotes(value):
         '«Budowa drogi»,'                   → 'Budowa drogi'
     TODO(normalize): implement; see tests/test_normalizers.py
     """
-    raise NotImplementedError
+    #raise NotImplementedError
 
 
 @normalizer("email")
 def email(value):
+    import re
+
+    if value is None:
+        return None
+
+    text = str(value).strip().lower()
+
+    if text == "brak":
+        return None
+
+    m = re.search(
+        r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if not m:
+        return None
+
+    return m.group(0).lower()
     """Extract and lower-case an e-mail address.
 
     Examples:
@@ -73,11 +118,51 @@ def email(value):
         'brak'                              → None
     TODO(normalize): implement; see tests/test_normalizers.py
     """
-    raise NotImplementedError
+    #raise NotImplementedError
 
 
 @normalizer("person_name")
 def person_name(value):
+    import re
+
+    if value is None:
+        return None
+
+    text = str(value).strip()
+
+    # usuń część po przecinku
+    text = text.split(",")[0]
+
+    # usuń tytuły
+    text = re.sub(r"^(r\.\s*pr\.|adw\.|mec\.)\s*", "", text, flags=re.IGNORECASE)
+
+    # usuń nadmiarowe spacje
+    text = re.sub(r"\s+", " ", text).strip()
+
+    role_markers = (
+        "prezes",
+        "dyrektor",
+        "członek",
+        "zarząd",
+        "radca",
+        "pełnomocnik",
+        "prokurent",
+        "sekretarz",
+    )
+    if any(marker in text.lower() for marker in role_markers):
+        return None
+
+    # oczekujemy co najmniej imię i nazwisko
+    parts = text.split()
+
+    if len(parts) < 2:
+        return None
+
+    # oba człony powinny zaczynać się wielką literą
+    if not all(p and p[0].isupper() for p in parts[:2]):
+        return None
+
+    return text
     """Person name without professional titles, single spaces, nominative case is NOT handled here
     (inflection is the LLM's job — this only cleans).
 
@@ -88,4 +173,4 @@ def person_name(value):
         'Prezes Zarządu'                → None   (not a name)
     TODO(normalize): implement; see tests/test_normalizers.py
     """
-    raise NotImplementedError
+    #raise NotImplementedError
