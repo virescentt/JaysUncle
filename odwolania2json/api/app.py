@@ -27,7 +27,8 @@ Endpoints (contract for the frontend — web/):
                                           "validators", "dictionaries", "id_pattern", "template" (data of a new class)}
   POST   /api/doc-types/parse         → body like validate → validate report + {"data" (JSON | null), "roundtrip_ok",
                                           "losses": [what saving from the form would drop: comments, anchors, …]}
-  POST   /api/doc-types/dump          → body {"data": {...}} → {"yaml": "..."} (key order kept, unknown keys kept)
+  POST   /api/doc-types/dump          → body {"data": {...}, "base": "yaml"?} → {"yaml": "..."} (merged into base:
+                                          comments, anchors, quotes kept; without base a fresh dump)
 
 Document payload: {"id", "filename", "json_filename", "doc_type", "doc_type_name", "confidence", "method", "scores",
   "reason", "data" (canonical JSON | null), "json_text" (output file content), "fields": [{"path", "value", "raw_value",
@@ -491,8 +492,11 @@ def create_app(
     async def dump_doc_type(request: Request):
         body = await _json_from_request(request)
         data = body.get("data") if isinstance(body, dict) else None
+        base = body.get("base") if isinstance(body, dict) else None
+        if base is not None and (not isinstance(base, str) or len(base) > workshop.MAX_YAML_CHARS):
+            raise HTTPException(400, "pole 'base' musi być tekstem YAML")
         try:
-            text = await run_in_threadpool(classform.dump_class, data)
+            text = await run_in_threadpool(classform.dump_class, data, base)
         except (ValueError, RecursionError) as e:
             raise HTTPException(400, str(e)) from e
         return {"yaml": text}

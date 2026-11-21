@@ -20,6 +20,7 @@ pytesseract==0.3.13         # Apache-2.0 — opcjonalny Tesseract (binarka + 'po
 # --- Konfiguracja, schematy, walidacja ---
 pydantic==2.14.4            # MIT
 PyYAML==6.0.4               # MIT
+ruamel.yaml==0.19.1         # MIT — zapis z formularza panelu bez utraty komentarzy w YAML
 python-dotenv==1.2.4        # BSD-3
 
 # --- LLM: klient dowolnego API zgodnego z OpenAI (model musi być open-source) ---

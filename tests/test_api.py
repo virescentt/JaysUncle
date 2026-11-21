@@ -6,6 +6,7 @@ Every test uses a TEMPORARY copy of config/ (create_app(config_dir=...)), so sav
 import hashlib
 import io
 import json
+import difflib
 import re
 import shutil
 import threading
@@ -561,8 +562,7 @@ def test_parse_dump_roundtrip_keeps_every_class(client, config_dir):
         parsed = client.post("/api/doc-types/parse", json={"yaml": text}).json()
         assert parsed["ok"] and parsed["data"]["id"] == parsed["id"], f.name
         assert parsed["roundtrip_ok"], f.name
-        if text.lstrip().startswith("#"):
-            assert any("komentarze" in loss for loss in parsed["losses"]), f.name
+        assert parsed["losses"] == [], f.name  # the form saves by merging into the file: comments / anchors stay
         r = client.post("/api/doc-types/dump", json={"data": parsed["data"]})
         assert r.status_code == 200, r.text
         dumped = r.json()["yaml"]
@@ -575,8 +575,35 @@ def test_parse_dump_roundtrip_keeps_every_class(client, config_dir):
         assert again["data"] == parsed["data"] and again["losses"] == [], f.name
 
     anchored = "a: &x {b: 1}\nc: *x\nd: 'tekst # bez komentarza'\n"
-    losses = client.post("/api/doc-types/parse", json={"yaml": anchored}).json()["losses"]
-    assert len(losses) == 1 and "kotwice" in losses[0]  # '#' inside a quoted string is not a comment
+    assert client.post("/api/doc-types/parse", json={"yaml": anchored}).json()["losses"] == []
+
+
+def test_dump_with_base_keeps_comments_anchors_and_layout(client, config_dir):
+    for f in _class_files(config_dir):
+        text = f.read_text(encoding="utf-8")
+        data = client.post("/api/doc-types/parse", json={"yaml": text}).json()["data"]
+        same = client.post("/api/doc-types/dump", json={"data": data, "base": text}).json()["yaml"]
+        assert same == text, f.name  # nothing changed in the form → the file byte for byte
+
+        data["name"] += " (zmiana)"
+        data["classification"]["signals"][0]["weight"] = 7
+        data["classification"]["signals"].append({"pattern": "nowa fraza", "weight": 1})
+        out = client.post("/api/doc-types/dump", json={"data": data, "base": text}).json()["yaml"]
+        assert yaml.safe_load(out) == data, f.name
+        changed = [ln for ln in difflib.ndiff(text.splitlines(), out.splitlines()) if ln[:1] in "+-"]
+        assert len(changed) == 5, (f.name, changed)  # name (−/+), first signal (−/+), the new signal (+)
+        assert [ln for ln in out.splitlines() if "#" in ln and ln.lstrip().startswith("#")] == [
+            ln for ln in text.splitlines() if "#" in ln and ln.lstrip().startswith("#")
+        ], f.name
+
+    base = "a: &x { b: 1 }  # wspólne\nc: *x\nd: 2\n"
+    out = client.post("/api/doc-types/dump", json={"data": {"a": {"b": 1}, "c": {"b": 1}, "d": 3}, "base": base})
+    assert out.json()["yaml"] == base.replace("d: 2", "d: 3")  # anchor, alias and comment kept
+    edited = client.post("/api/doc-types/dump", json={"data": {"a": {"b": 1}, "c": {"b": 5}, "d": 2}, "base": base})
+    assert yaml.safe_load(edited.json()["yaml"]) == {"a": {"b": 1}, "c": {"b": 5}, "d": 2}  # alias edited alone
+    assert client.post("/api/doc-types/dump", json={"data": {"a": 1}, "base": 5}).status_code == 400
+    broken = client.post("/api/doc-types/dump", json={"data": {"a": 1}, "base": "a: ["}).json()["yaml"]
+    assert yaml.safe_load(broken) == {"a": 1}  # unreadable base → a fresh dump
 
 
 def test_parse_reports_unreadable_yaml_and_non_json_values(client):

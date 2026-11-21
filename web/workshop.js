@@ -132,7 +132,8 @@ async function syncForm() {
     return false;
   }
   if (JSON.stringify(json) === ws.form.snapshot) return true; // unchanged → keep the YAML text as it is
-  const res = await jsonPost("/api/doc-types/dump", { data: json });
+  // base = the current YAML text: the server merges the changes into it, so comments in the file stay
+  const res = await jsonPost("/api/doc-types/dump", { data: json, base: el.yaml.value });
   el.yaml.value = res.yaml;
   ws.form.snapshot = JSON.stringify(json);
   ws.form.dumped = true;

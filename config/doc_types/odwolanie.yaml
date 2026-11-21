@@ -71,16 +71,17 @@ output:
         patterns:   # „Informacja o zaskarżonej czynności została przekazana … w dniu 01.04.2026 r.”
           - 'zaskarżon\w*\s+czynnoś\w*[^.;]{0,80}?\bw\s+dniu\s+(?P<value>\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4})'
         strategy: date          # pierwsza data w tekście pierwszego zarzutu
-        params: &pierwszy_zarzut   # tekst pierwszego zarzutu: po najwcześniejszym z „anchors”, przed uzasadnieniem
+        # params: tekst pierwszego zarzutu: po najwcześniejszym z „anchors”, przed uzasadnieniem
+        params: &pierwszy_zarzut
           end: ['^\s*UZASADNIENIE', '^\s*Uzasadnienie\s*$']
           # first_item: lista „1)” po kotwicy kończącej linię; tekst w tej samej linii („polegającej na wyborze …”)
           # to już opis czynności. „z naruszeniem” zaczyna przepisy (inne daty, „poprzez zaniechanie …”).
           anchors:
-            - {at: 'polegając\w*\s+na\s*:?', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';', '^\s*Zarzut', 'z\s+naruszeniem']}
-            - {at: 'wnosz\w*\s+odwołanie\s+(?:wobec|od)\s*:', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';', 'z\s+naruszeniem']}
-            - {at: '^\s*Zamawiający\s+w\s+dniu\s+', until: ['\.[ \t]*\n(?![ \t]*(?-i:[a-ząćęłńóśźż]))', '\.\s+(?=(?-i:[A-ZŁŚŻŹĆŃÓ]))']}   # zdanie: do kropki przed wielką literą / końcem akapitu („2026 r.⏎nie wykluczył” to nie koniec)
-            - {at: 'Zarzut\w*\s+(?:nr\s*)?1\b', until: ['Zarzut\w*\s+(?:nr\s*)?2\b', ';']}
-            - {at: 'zarzuca\w*\s+(?:Zamawiającemu\s+)?(?:naruszenie\s*)?:', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';']}
+            - { at: 'polegając\w*\s+na\s*:?', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';', '^\s*Zarzut', 'z\s+naruszeniem'] }
+            - { at: 'wnosz\w*\s+odwołanie\s+(?:wobec|od)\s*:', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';', 'z\s+naruszeniem'] }
+            - { at: '^\s*Zamawiający\s+w\s+dniu\s+', until: ['\.[ \t]*\n(?![ \t]*(?-i:[a-ząćęłńóśźż]))', '\.\s+(?=(?-i:[A-ZŁŚŻŹĆŃÓ]))'] }   # zdanie: do kropki przed wielką literą / końcem akapitu („2026 r.⏎nie wykluczył” to nie koniec)
+            - { at: 'Zarzut\w*\s+(?:nr\s*)?1\b', until: ['Zarzut\w*\s+(?:nr\s*)?2\b', ';'] }
+            - { at: 'zarzuca\w*\s+(?:Zamawiającemu\s+)?(?:naruszenie\s*)?:', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';'] }
           skip_preceded_by: ['ustaw\w*\s+z\s+(?:dnia\s+)?$']   # data ustawy Pzp („ustawy z dnia 11 września 2019 r.”) to nie data czynności
         normalize: [date_pl]
       czynnosc_powod_id:
@@ -187,7 +188,7 @@ output:
             nazwa:
               type: string
               description: Nazwa podmiotu zatrudniającego pełnomocnika (np. kancelarii).
-              section: {start: 'adres\w*\s+do\s+korespondenc\w*\s*:?'}
+              section: { start: 'adres\w*\s+do\s+korespondenc\w*\s*:?' }
               strategy: first_line   # „adres do korespondencji: Kancelaria …, ul. …”
               params:
                 cut: [',\s*(?:ul\.|al\.|pl\.|os\.)', ',?\s*\d{2}\s?-\s?\d{3}\b']
