@@ -28,6 +28,21 @@
       <button class="tab" role="tab" id="tab-btn-docs" aria-controls="tab-docs" aria-selected="true" data-tab="docs" type="button">Dokumenty</button>
       <button class="tab" role="tab" id="tab-btn-classes" aria-controls="tab-classes" aria-selected="false" data-tab="classes" tabindex="-1" type="button">Typy dokumentów</button>
     </nav>
+    <div class="menu-wrap" id="dict-menu-wrap">
+      <button class="tab menu-btn" id="dict-menu-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="dict-menu">
+        Słowniki <svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+      <div class="menu" id="dict-menu" hidden>
+        <div class="menu-head">
+          <span>Słowniki</span>
+          <span class="help">
+            <button class="help-q" type="button" aria-describedby="dict-help" aria-label="Co to są słowniki?">?</button>
+            <span class="help-tip" id="dict-help" role="tooltip">Listy wartości, z których system wybiera np. powód odwołania. Tylko do podglądu.</span>
+          </span>
+        </div>
+        <ul id="dict-list" class="dict-list"></ul>
+      </div>
+    </div>
     <div class="topbar-right">
       <div class="health" id="health">
         <span class="dot" aria-hidden="true"></span>
@@ -125,12 +140,6 @@
           <button class="btn small primary" id="ws-new" type="button">+ Nowy typ</button>
         </div>
         <ul id="class-list" class="class-list" aria-label="Typy dokumentów"></ul>
-        <p class="side-note">Przełącznik „Rozpoznawany / Wyłączony” decyduje, czy system rozpoznaje dany typ. Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON.</p>
-        <section class="side-section" aria-labelledby="dict-list-title">
-          <h2 id="dict-list-title">Słowniki</h2>
-          <p class="side-note">Listy wartości, z których system wybiera np. powód odwołania. Tylko do podglądu.</p>
-          <ul id="dict-list" class="dict-list"></ul>
-        </section>
       </aside>
 
       <section class="workshop" id="workshop" aria-labelledby="ws-title">

@@ -472,6 +472,45 @@ function initPages() {
     },
     true,
   );
+  // grab and drag the page with the left mouse button (the pane scrolls with it); a click without movement still
+  // selects a highlighted field. Touch keeps native scrolling.
+  let drag = null;
+  let swallowClick = false;
+  wrap.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: wrap.scrollLeft, top: wrap.scrollTop, moved: false };
+  });
+  wrap.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved) {
+      if (Math.hypot(dx, dy) < 5) return;
+      drag.moved = true;
+      wrap.classList.add("grabbing");
+      wrap.setPointerCapture(e.pointerId);
+    }
+    wrap.scrollLeft = drag.left - dx;
+    wrap.scrollTop = drag.top - dy;
+  });
+  const endDrag = () => {
+    if (drag?.moved) {
+      wrap.classList.remove("grabbing");
+      swallowClick = true; // the click that ends a drag must not select a field
+      setTimeout(() => (swallowClick = false), 0);
+    }
+    drag = null;
+  };
+  wrap.addEventListener("pointerup", endDrag);
+  wrap.addEventListener("pointercancel", endDrag);
+  wrap.addEventListener("dragstart", (e) => e.preventDefault());
+  wrap.addEventListener(
+    "click",
+    (e) => {
+      if (swallowClick) e.stopImmediatePropagation();
+    },
+    true,
+  );
   wrap.addEventListener("click", (e) => {
     const box = e.target.closest(".hl");
     if (!box) return;

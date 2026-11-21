@@ -73,10 +73,7 @@ export function initWorkshop(hooks) {
   el.result.addEventListener("click", (e) => {
     if (e.target.closest("[data-open]") && ws.lastTest) ws.hooks.onOpenDocument(ws.lastTest);
   });
-  $("#dict-list").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-dict]");
-    if (b) openDictionary(b.dataset.dict);
-  });
+  initDictMenu();
   initEditor();
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) e.preventDefault();
@@ -87,7 +84,6 @@ export function initWorkshop(hooks) {
 export function showWorkshop() {
   if (!el.list) return;
   if (!ws.loaded) refreshClasses();
-  if (!ws.dicts) loadDictionaries();
   loadMeta().catch(() => {});
 }
 
@@ -249,6 +245,33 @@ async function toggleEnabled(id, btn) {
 }
 
 // ------------------------------------------------------------------ dictionaries (read-only viewer)
+/** "Słowniki ▾" in the top bar: a small menu with the dictionaries; a click opens the read-only table. */
+function initDictMenu() {
+  const btn = $("#dict-menu-btn");
+  const menu = $("#dict-menu");
+  const setOpen = (open) => {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    if (open && !ws.dicts) loadDictionaries();
+  };
+  btn.addEventListener("click", () => setOpen(menu.hidden));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !e.target.closest("#dict-menu-wrap")) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !menu.hidden) {
+      setOpen(false);
+      btn.focus();
+    }
+  });
+  $("#dict-list").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-dict]");
+    if (!b) return;
+    setOpen(false);
+    openDictionary(b.dataset.dict);
+  });
+}
+
 async function loadDictionaries() {
   const list = $("#dict-list");
   try {
@@ -261,7 +284,7 @@ async function loadDictionaries() {
     ? ws.dicts
         .map(
           (d) => `<li><button type="button" class="dict-item" data-dict="${esc(d.id)}">
-            <span>${esc(humanizeKey(d.id))}</span><span class="muted small">${d.entries.length} ${plural(d.entries.length, ["pozycja", "pozycje", "pozycji"])}</span>
+            <span class="dict-name">${esc(humanizeKey(d.id))}</span><span class="dict-count">${d.entries.length} ${plural(d.entries.length, ["pozycja", "pozycje", "pozycji"])}</span><span class="dict-go" aria-hidden="true">›</span>
           </button></li>`,
         )
         .join("")
@@ -316,16 +339,16 @@ function openDictionary(id) {
     .map(
       (e) => `<tr>
         <td class="num">${esc(e.id)}</td>
-        <td><strong>${esc(e.opis)}</strong>${e.hint ? `<div class="muted small">${esc(e.hint)}</div>` : ""}</td>
+        <td><strong>${esc(e.opis)}</strong></td>
         <td>${e.keywords.length ? `<ul class="kw">${e.keywords.flatMap((k) => humanizePattern(k).map((h) => `<li title="${esc(k)}">${esc(h)}</li>`)).join("")}</ul>` : '<span class="muted">—</span>'}</td>
       </tr>`,
     )
     .join("");
   $("#dict-title").textContent = `Słownik: ${humanizeKey(d.id)}`;
   $("#dict-body").innerHTML = `
-    ${d.description ? `<p>${esc(d.description)}</p>` : ""}
-    ${used ? `<p class="muted">Na tej podstawie system ustala wartość pola ${used} oraz jego opis.</p>` : ""}
-    <p class="dict-note">Słownik jest tylko do podglądu. Zmiany wprowadza informatyk w pliku słownika.</p>
+    <p class="dict-intro">${d.description ? `${esc(d.description.replace(/\.?\s*$/, "."))} ` : ""}${
+      used ? `Na tej podstawie system ustala wartość pola ${used} oraz jego opis. ` : ""
+    }Słownik jest tylko do podglądu — zmiany wprowadza informatyk w pliku słownika.</p>
     <table class="dict-table">
       <thead><tr><th scope="col">Nr</th><th scope="col">Opis</th><th scope="col">Słowa kluczowe</th></tr></thead>
       <tbody>${rows}</tbody>
