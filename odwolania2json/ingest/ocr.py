@@ -19,8 +19,9 @@ from pathlib import Path
 from typing import Protocol
 
 import pypdfium2 as pdfium
+from PIL import Image, ImageFilter, ImageOps
 
-from odwolania2json.models import Page
+from odwolania2json.models import Page, Word
 from odwolania2json.settings import IngestSettings
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,27 @@ def render_page(pdf_path: Path, page_index: int, dpi: int = 300):
         pdf.close()
 
 
+def preprocess_image(image: Image.Image) -> Image.Image:
+    result = ImageOps.grayscale(image)
+    result = ImageOps.autocontrast(result)
+    return result.filter(ImageFilter.MedianFilter(size=3))
+
+
+def scaled_bbox(
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    image_width: float,
+    image_height: float,
+    page_width: float,
+    page_height: float,
+) -> tuple[float, float, float, float]:
+    sx = page_width / image_width
+    sy = page_height / image_height
+    return (left * sx, top * sy, (left + width) * sx, (top + height) * sy)
+
+
 class TesseractEngine:
     name = "tesseract"
 
@@ -53,7 +75,37 @@ class TesseractEngine:
 
     def ocr_page(self, pdf_path: Path, page_index: int, page: Page, settings: IngestSettings) -> Page:
         img = render_page(pdf_path, page_index, settings.ocr_dpi)
-        page.text = self._pt.image_to_string(img, lang=settings.ocr_lang, config="--psm 3")
+        img = preprocess_image(img)
+        page.text = self._pt.image_to_string(
+            img, lang=settings.ocr_lang, config="--psm 3"
+        ).strip()
+        data = self._pt.image_to_data(
+            img,
+            lang=settings.ocr_lang,
+            config="--psm 3",
+            output_type=self._pt.Output.DICT,
+        )
+        page.words = []
+        confidences: list[float] = []
+        for i, raw_text in enumerate(data["text"]):
+            text = str(raw_text).strip()
+            if not text:
+                continue
+            confidence = float(data["conf"][i])
+            if confidence >= 0:
+                confidences.append(confidence / 100.0)
+            bbox = scaled_bbox(
+                float(data["left"][i]),
+                float(data["top"][i]),
+                float(data["width"][i]),
+                float(data["height"][i]),
+                float(img.width),
+                float(img.height),
+                page.width,
+                page.height,
+            )
+            page.words.append(Word(text, bbox))
+        page.ocr_confidence = sum(confidences) / len(confidences) if confidences else None
         page.source, page.ocr_engine = "ocr", self.name
         return page
 
@@ -79,8 +131,35 @@ class RapidOCREngine:
         import numpy as np
 
         img = render_page(pdf_path, page_index, min(settings.ocr_dpi, 200))
+        img = preprocess_image(img)
         res = self._engine(np.array(img.convert("RGB")))
-        page.text = "\n".join(res.txts or [])
+        raw_texts = getattr(res, "txts", None)
+        raw_boxes = getattr(res, "boxes", None)
+        raw_scores = getattr(res, "scores", None)
+        texts = list(raw_texts) if raw_texts is not None else []
+        boxes = list(raw_boxes) if raw_boxes is not None else []
+        scores = list(raw_scores) if raw_scores is not None else []
+        page.text = "\n".join(texts).strip()
+        page.words = []
+        for index, text in enumerate(texts):
+            if index >= len(boxes):
+                continue
+            box = boxes[index]
+            xs = [float(point[0]) for point in box]
+            ys = [float(point[1]) for point in box]
+            bbox = scaled_bbox(
+                min(xs),
+                min(ys),
+                max(xs) - min(xs),
+                max(ys) - min(ys),
+                float(img.width),
+                float(img.height),
+                page.width,
+                page.height,
+            )
+            page.words.append(Word(str(text), bbox))
+        valid_scores = [float(score) for score in scores if score is not None]
+        page.ocr_confidence = sum(valid_scores) / len(valid_scores) if valid_scores else None
         page.source, page.ocr_engine = "ocr", self.name
         return page
 
