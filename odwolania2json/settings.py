@@ -3,38 +3,57 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from odwolania2json import CONFIG_DIR, PROJECT_ROOT
+
+OCREngineName = Literal["auto", "rapidocr", "easyocr", "tesseract", "none"]
 
 
 class IngestSettings(BaseModel):
     """PDF → pages (odwolania2json/ingest): text layer via pdfplumber, OCR for scans / garbage text layers."""
 
+    model_config = ConfigDict(validate_assignment=True)  # Settings.load() assigns env values (OCR_ENGINE)
+
     min_chars_per_page: int = 40  # fewer characters in the text layer → the page is a scan → OCR
     min_text_quality: float = 0.5  # min share of letters/digits in a text layer; lower ("(cid:..)", junk) → OCR
     image_page_min_chars: int = 200  # page covered by an image (scan) with less text layer than this → OCR
-    ocr_engine: Literal["auto", "rapidocr", "easyocr", "tesseract", "none"] = "auto"
+    ocr_engine: OCREngineName = "auto"
     ocr_model: str = "PP-OCRv6-small"  # rapidocr: PP-OCRv6-tiny | PP-OCRv6-small | PP-OCRv6-medium | PP-OCRv5-latin
     ocr_dpi: int = 300  # page rendering resolution for OCR
     ocr_preprocess: list[str] = Field(default_factory=list)  # grayscale | autocontrast | binarize | denoise | deskew
     ocr_det_side: int = 2000  # rapidocr: longest image side (px) for text detection (0 = library default)
     ocr_max_side: int = 0  # rapidocr: downscale the page to this longest side before det+rec (0 = never)
     ocr_use_cls: bool = False  # rapidocr: per-line 0/180° classifier (flips bleed-through lines by mistake)
-    ocr_auto_rotate: bool = True  # page read with low confidence → try it turned by 180/90/270° (upside-down scans)
+    ocr_auto_rotate: bool = True  # page read badly → also read turned: 180° (horizontal lines) or 90/270° (vertical)
     ocr_min_score: float = 0.5  # recognized text with lower confidence is dropped
     ocr_retry_score: float = 0.9  # rapidocr: lines read with lower confidence are re-read from enhanced crops (0=off)
+    ocr_rec_batch: int = 1  # rapidocr: lines per recognition batch (padding to the longest line drops spaces)
+    ocr_drop_mirrored: bool = True  # rapidocr: drop faint lines that read better mirrored (bleed-through)
     ocr_polish_letters: bool = True  # OCR letters absent from Polish (ı ñ š ž à é ç…) → Polish / base letter
     ocr_lang: str = "pol"  # tesseract languages ("pol+eng"); easyocr: pol → pl
     max_pages: int = 20
     tesseract_cmd: str | None = None
     cache_dir: str | None = ".cache/ingest"  # cache of extracted/OCR-ed pages (None = off)
+
+    @field_validator("ocr_engine", mode="before")
+    @classmethod
+    def _engine_name(cls, value: object) -> object:
+        """'RapidOCR ' → 'rapidocr'; an unknown name → 'auto' with a warning (it used to switch OCR off silently)."""
+        if not isinstance(value, str):
+            return value
+        name = value.strip().lower()
+        if name not in get_args(OCREngineName):
+            logging.getLogger(__name__).warning("Unknown OCR engine %r — using 'auto'", value)
+            return "auto"
+        return name
 
 
 class ClassificationSettings(BaseModel):

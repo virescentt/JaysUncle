@@ -7,10 +7,15 @@ pdfplumber==0.11.11         # MIT — tekst + słowa ze współrzędnymi (podśw
 pypdfium2==5.15.2           # Apache-2.0/BSD-3 — renderowanie stron do obrazów (OCR, podgląd w UI)
 pillow==13.0.0              # MIT-CMU — obrazy
 
-# --- OCR (dla skanów) ---
-pytesseract==0.3.13         # Apache-2.0 — wrapper; wymaga binarki Tesseract + języka 'pol'
-rapidocr==3.10.0            # Apache-2.0 — zapasowy OCR instalowany wyłącznie przez pip
-onnxruntime==1.32.0         # MIT — runtime dla rapidocr
+# --- OCR (dla skanów): tylko pip, CPU; modele PP-OCRv6 small (Apache-2.0) są w paczce rapidocr — bez pobierania ---
+rapidocr==3.10.0            # Apache-2.0 — domyślny silnik OCR (porównanie: scripts/ocr_benchmark.py)
+onnxruntime==1.32.0         # MIT — runtime modeli ONNX (CPU)
+numpy==2.5.5                # BSD-3 — obrazy (rapidocr, preprocessing)
+opencv-python-headless==5.1.0.95  # Apache-2.0 — zależność rapidocr (przypięta wersja sprawdzona)
+shapely==2.2.0              # BSD-3 — zależność rapidocr
+pyclipper==1.4.0            # MIT — zależność rapidocr
+omegaconf==2.4.0            # BSD-3 — zależność rapidocr
+pytesseract==0.3.13         # Apache-2.0 — opcjonalny Tesseract (binarka + 'pol'); EasyOCR: requirements-ocr.txt
 
 # --- Konfiguracja, schematy, walidacja ---
 pydantic==2.14.4            # MIT

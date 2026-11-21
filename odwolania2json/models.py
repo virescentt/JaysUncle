@@ -29,6 +29,7 @@ class Page:
     height: float = 0.0
     source: Literal["text", "ocr", "empty"] = "text"
     ocr_engine: str | None = None
+    ocr_confidence: float | None = None  # mean recognition confidence of an OCR page (0..1)
 
 
 @dataclass
