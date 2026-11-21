@@ -748,9 +748,9 @@ pre.json:focus-visible { outline-offset: -3px; }
 .dict-dlg { width: min(1100px, calc(100vw - 32px)); }
 .dict-body { padding: var(--s4); display: grid; gap: var(--s3); overflow: auto; max-height: calc(85vh - 60px); font-size: var(--fs-sm); }
 .dict-table { border-collapse: collapse; width: 100%; }
-.dict-table th, .dict-table td { text-align: left; vertical-align: top; padding: var(--s2) var(--s3); border: 1px solid var(--border); }
+.dict-table th, .dict-table td { text-align: left; vertical-align: middle; padding: var(--s2) var(--s3); border: 1px solid var(--border); }
 .dict-table th { background: var(--surface-2); font-size: var(--fs-xs); color: var(--muted); }
-.dict-table td.num { width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+.dict-table td.num, .dict-table th:first-child { width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
 .dict-table td:last-child { width: 36%; }
 .dict-table .kw { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s1); }
 .dict-table .kw li { font-size: var(--fs-xs); padding: 0 var(--s2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
