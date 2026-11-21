@@ -70,7 +70,16 @@ Ten sam zbiór 30 skanów organizatora, ta sama metryka:
 | Konfiguracja | F1 | Uwagi |
 |---|---|---|
 | **Reguły (domyślnie)** | **0.969** | sekundy na dokument, bez internetu i klucza API |
+| Hybryda: reguły + Qwen3.5-9B (OVHcloud, bez „myślenia”), LLM tylko uzupełnia puste pola | 0.955 | P 0.940 / R 0.971 — LLM podnosi kompletność, ale wypełnia pola puste w referencji (FP 19 vs 7); ok. 3,5 s/dokument |
 | Hybryda: reguły + Olala-v1.0-mini-7A1B (OVHcloud), LLM tylko uzupełnia puste pola | 0.942 | brak odpowiedzi w 15/30 dokumentów (rozumowanie zużywa cały limit 16 000 tokenów), dodatkowe FP w polach pustych w referencji (`mocodawca[].data.imie_nazwisko`, `prowadzacy_postepowanie`, `typ`), ok. 1 min/dokument |
+
+Sam LLM (tryb `llm`, bez reguł) na 10 sprawach (40 PDF, ten sam zbiór dla wszystkich modeli):
+
+| Model (OVHcloud AI Endpoints) | Parametry | Pkt za wielkość | F1 | Czas |
+|---|---|---|---|---|
+| Mistral-Small-3.2-24B-Instruct-2506 | 24B | 12 | 0.964 | ~40 s |
+| **Qwen3.5-9B** (`reasoning_effort: none`) | 9B | **18** | 0.931 | ~90 s |
+| Olala-v1.0-mini-7A1B | 6,8B | 20 | 0.475 | 12,5 min („myślenia” nie da się wyłączyć) |
 
 Wniosek: w zgłoszeniu domyślnie działa tryb reguł; LLM pozostaje opcją (`EXTRACTION_MODE=hybrid|llm`), m.in. dla nowych klas dokumentów bez reguł. Odtworzenie: `EXTRACTION_MODE=hybrid python -m evaluation.run_eval --subset scans` (wymaga klucza w `.env`).
 

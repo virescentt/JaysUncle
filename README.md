@@ -101,9 +101,10 @@ Klucz API **nie jest** w repozytorium — wpisujemy go do pliku `.env` (kopia `.
 # Model open-source przez API z serwerami w UE (OVHcloud AI Endpoints, Francja)
 LLM_BASE_URL=https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
 LLM_API_KEY=<klucz>
-LLM_MODEL=Olala-v1.0-mini-7A1B   # wybór modelu: patrz docs/ARCHITEKTURA.md (sekcja LLM)
+LLM_MODEL=Qwen3.5-9B                           # 9B open-weights; wybór i pomiary: docs/ARCHITEKTURA.md (sekcja LLM)
+LLM_EXTRA_BODY={"reasoning_effort": "none"}    # bez „myślenia”: odpowiedź w 1–2 s zamiast ~18 s
 
-EXTRACTION_MODE=hybrid     # rules | llm | hybrid
+EXTRACTION_MODE=rules      # rules | llm | hybrid — wbudowane typy działają na regułach; LLM czyta nowe typy z panelu
 OCR_ENGINE=auto            # auto | rapidocr | easyocr | tesseract | none
 ```
 

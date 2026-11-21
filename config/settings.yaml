@@ -27,7 +27,7 @@ classification:
   use_llm_fallback: true      # niepewna klasyfikacja → zapytaj LLM (jeśli skonfigurowany)
 
 extraction:
-  mode: rules                 # rules | llm | hybrid — domyślnie reguły: F1 0.969 na 30 skanach vs hybryda z Olala 0.942 (docs/RAPORT_JAKOSCI.md)
+  mode: rules                 # rules | llm | hybrid — domyślnie reguły: F1 0.969 na 30 skanach vs hybryda z Qwen3.5-9B 0.955 (docs/RAPORT_JAKOSCI.md)
   llm_policy: fill_missing    # hybrid: LLM uzupełnia tylko pola puste po regułach (fill_missing) albo konkuruje (compete)
   min_confidence: 0.5         # pewność poniżej progu → null (precyzja ważniejsza niż zgadywanie)
   method_priority: [rules, llm, derived]   # przy remisie pewności

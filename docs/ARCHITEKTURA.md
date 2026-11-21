@@ -92,16 +92,18 @@ input/<sprawa>/<plik>.pdf
 
 - **Klient:** dowolne API zgodne z OpenAI (`openai` SDK), bez kodu specyficznego dla dostawcy; konfiguracja wyłącznie w `.env` (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). Lokalnie można użyć Ollama / vLLM / llama.cpp.
 - **Dostawca:** OVHcloud AI Endpoints — Francja, serwery w UE; według OVH dane nie są wykorzystywane do trenowania modeli.
-- **Modele brane pod uwagę** (wyłącznie open-weights):
+- **Modele brane pod uwagę** (wyłącznie open-weights, wszystkie w OVHcloud AI Endpoints; F1 = sam LLM, 10 spraw / 40 PDF):
 
-| Model | Parametry | Licencja | Punkty za wielkość modelu (regulamin) |
-|---|---|---|---|
-| Olala-v1.0-mini-7A1B | 6,8 mld (łącznie) | Apache 2.0, bezpłatny w OVHcloud | ≤ 8B → 20 pkt |
-| Qwen3.5-9B | 9 mld | open-weights | > 8–14B → 18 pkt |
+| Model | Parametry | Punkty za wielkość modelu (regulamin) | F1 (tylko LLM) | Uwagi |
+|---|---|---|---|---|
+| **Qwen3.5-9B** | 9 mld | > 8–14B → 18 pkt | 0.931 | z `reasoning_effort: none` odpowiada w 1–2 s |
+| Mistral-Small-3.2-24B-Instruct-2506 | 24 mld | > 14–32B → 12 pkt | 0.964 | najlepszy wynik, ale −6 pkt za wielkość |
+| Olala-v1.0-mini-7A1B | 6,8 mld (łącznie) | ≤ 8B → 20 pkt | 0.475 | „myślenia” nie da się wyłączyć: brak odpowiedzi lub minuty na dokument |
+| laguna-xs-2.1 | 33 mld (MoE, 3B aktywnych) | > 32–70B → 8 pkt | — | liczą się wszystkie parametry MoE |
 
-**Wybrany model: domyślnie brak — tryb reguł.** Pomiar na 30 skanach organizatora: reguły F1 **0.969**, hybryda z Olala-v1.0-mini-7A1B (OVHcloud, polityka `fill_missing`) F1 **0.942**. Olala nie zwróciła odpowiedzi w 15/30 dokumentów (cały limit 16 000 tokenów zużyty na rozumowanie; OVHcloud nie pozwala go wyłączyć), a uzupełniane przez nią pola były często puste w referencji (np. `imie_nazwisko` mocodawcy będącego osobą prawną) — czyli FP; ok. 1 min/dokument. Dlatego LLM jest opcją: `EXTRACTION_MODE=hybrid` lub `llm` (np. dla nowych klas dokumentów, dla których nie ma jeszcze reguł — wystarczą opisy pól w YAML). Bez LLM aplikacja nie potrzebuje klucza API ani internetu.
+**Wybrany model: Qwen3.5-9B** z wyłączonym rozumowaniem (`LLM_EXTRA_BODY={"reasoning_effort": "none"}` — bez tego model zużywa ~2000 tokenów i ~18 s na „myślenie”). Wbudowane typy (odwołanie, pełnomocnictwo, przelew) działają domyślnie na regułach: na 30 skanach organizatora reguły dają F1 **0.969**, hybryda z Qwen3.5-9B **0.955** (LLM podnosi kompletność, ale wypełnia pola puste w referencji), hybryda z Olala **0.942**. LLM czyta dane **nowych typów dokumentów** dodanych w panelu (tryb `llm` w YAML typu — wystarczą opisy pól), może rozstrzygać niepewną klasyfikację i jest dostępny dla wbudowanych typów jako `EXTRACTION_MODE=hybrid|llm`. Bez LLM aplikacja nie potrzebuje klucza API ani internetu. Lokalnie ten sam model: Ollama `qwen3.5:9b`.
 
-- **Polityka hybrydowa (tryb `hybrid`, domyślny):** najpierw reguły; LLM uzupełnia tylko pola, które reguły zostawiły puste — nigdy nie nadpisuje wartości z reguł (`extraction.llm_policy: fill_missing` w `config/settings.yaml`; alternatywa `compete` = wygrywa kandydat o wyższej pewności). Wartości z LLM przechodzą tę samą normalizację i weryfikację: wartość tekstowa lub numer, którego nie ma w tekście dokumentu, spada poniżej progu pewności i staje się `null`.
+- **Polityka hybrydowa (tryb `hybrid`):** najpierw reguły; LLM uzupełnia tylko pola, które reguły zostawiły puste — nigdy nie nadpisuje wartości z reguł (`extraction.llm_policy: fill_missing` w `config/settings.yaml`; alternatywa `compete` = wygrywa kandydat o wyższej pewności). Wartości z LLM przechodzą tę samą normalizację i weryfikację: wartość tekstowa lub numer, którego nie ma w tekście dokumentu, spada poniżej progu pewności i staje się `null`.
 - **Co dostaje model:** prompt systemowy z `config/prompts/extract_system.md` + instrukcje klasy i słowniki z YAML; tekst dokumentu ze znacznikami stron; JSON Schema wygenerowany z sekcji `output` klasy (structured output; gdy serwer go nie obsługuje — automatycznie `json_object`, potem zwykły prompt). Temperatura 0, ponowienia z informacją o błędzie, cache odpowiedzi w `.cache/llm`.
 - **Klasyfikacja:** gdy reguły są niepewne, a LLM jest dostępny, o klasę pytany jest LLM (zero-shot; lista klas i opisy z YAML; `classification.use_llm_fallback` w `settings.yaml`).
 - **Bez LLM:** tryb `rules` w ogóle nie tworzy klienta LLM (pełny offline). Gdy brak klucza, internetu lub modelu, aplikacja raz wypisuje przyczynę i przetwarza dokumenty w trybie reguł. Wszystkie wyniki w [RAPORT_JAKOSCI.md](RAPORT_JAKOSCI.md) są w trybie reguł.

@@ -81,8 +81,8 @@ class LLMSettings(BaseModel):
     max_retries: int = 2
     cache_dir: str = ".cache/llm"
     prompt_suffix: str = ""  # appended to every system prompt, e.g. "/no_think" for Qwen3 models
-    # extra JSON fields sent with every request, provider-specific, e.g. for vLLM-based servers (OVHcloud):
-    # {"chat_template_kwargs": {"enable_thinking": false}} — env LLM_EXTRA_BODY (JSON)
+    # extra JSON fields sent with every request, provider-specific — env LLM_EXTRA_BODY (JSON), e.g. thinking off:
+    # OVHcloud / Ollama {"reasoning_effort": "none"}, own vLLM {"chat_template_kwargs": {"enable_thinking": false}}
     extra_body: dict = Field(default_factory=dict)
 
     @property
