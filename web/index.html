@@ -190,10 +190,6 @@
           </div>
         </div>
 
-        <dialog id="dict-dlg" class="cf-dialog dict-dlg" aria-labelledby="dict-title">
-          <form method="dialog" class="cf-dialog-head"><strong id="dict-title">Słownik</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
-          <div class="dict-body" id="dict-body"></div>
-        </dialog>
         <dialog id="ws-preview-dlg" class="cf-dialog" aria-labelledby="ws-preview-title">
           <form method="dialog" class="cf-dialog-head"><strong id="ws-preview-title">Podgląd pliku konfiguracji (YAML)</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
           <pre id="ws-preview-text"></pre>
@@ -201,6 +197,12 @@
       </section>
     </section>
   </main>
+
+  <!-- dictionary viewer: outside the tabs, so it opens from any tab (the menu is in the top bar) -->
+  <dialog id="dict-dlg" class="cf-dialog dict-dlg" aria-labelledby="dict-title">
+    <form method="dialog" class="cf-dialog-head"><strong id="dict-title">Słownik</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
+    <div class="dict-body" id="dict-body"></div>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
