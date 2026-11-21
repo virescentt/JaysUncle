@@ -92,6 +92,8 @@ class LLMClient:
 
     # ------------------------------------------------------------------ main API
     def complete_json(self, system: str, user: str, schema: dict | None = None, name: str = "output") -> dict:
+        if self.settings.prompt_suffix:
+            system = f"{system}\n{self.settings.prompt_suffix}"
         key = self._key(system, user, schema)
         cached = self._cache_path(key)
         if cached.exists():

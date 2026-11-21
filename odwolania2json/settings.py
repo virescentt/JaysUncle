@@ -20,6 +20,7 @@ class IngestSettings(BaseModel):
     ocr_lang: str = "pol"
     max_pages: int = 20
     tesseract_cmd: str | None = None
+    cache_dir: str | None = ".cache/ingest"  # cache of extracted/OCR-ed pages (None = off)
 
 
 class ClassificationSettings(BaseModel):
@@ -44,10 +45,15 @@ class LLMSettings(BaseModel):
     structured_output: Literal["json_schema", "json_object", "prompt"] = "json_schema"
     max_retries: int = 2
     cache_dir: str = ".cache/llm"
+    prompt_suffix: str = ""  # appended to every system prompt, e.g. "/no_think" for Qwen3 models
 
     @property
     def enabled(self) -> bool:
         return bool(self.base_url and self.model)
+
+
+class PipelineSettings(BaseModel):
+    workers: int = 4  # documents processed in parallel (LLM calls are I/O-bound)
 
 
 class OutputSettings(BaseModel):
@@ -64,6 +70,7 @@ class Settings(BaseModel):
     extraction: ExtractionSettings = ExtractionSettings()
     llm: LLMSettings = LLMSettings()
     output: OutputSettings = OutputSettings()
+    pipeline: PipelineSettings = PipelineSettings()
     config_dir: Path = CONFIG_DIR
 
     @classmethod
@@ -84,4 +91,8 @@ class Settings(BaseModel):
         s.llm.base_url = env("LLM_BASE_URL") or s.llm.base_url
         s.llm.api_key = env("LLM_API_KEY") or s.llm.api_key
         s.llm.model = env("LLM_MODEL") or s.llm.model
+        if (v := env("LLM_PROMPT_SUFFIX")) is not None:
+            s.llm.prompt_suffix = v
+        if v := env("PIPELINE_WORKERS"):
+            s.pipeline.workers = max(1, int(v))
         return s

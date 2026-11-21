@@ -108,6 +108,8 @@ class DocumentResult:
     scanned: bool = False
     timings: dict[str, float] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    # the ingested document (pages, words with bboxes) — used by the UI to highlight sources; not serialized
+    document: Document | None = field(default=None, repr=False)
 
     @property
     def skipped(self) -> bool:

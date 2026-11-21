@@ -6,6 +6,7 @@ ingest:
   ocr_dpi: 300
   ocr_lang: pol
   max_pages: 20               # ile stron maksymalnie czytamy z jednego PDF
+  cache_dir: .cache/ingest    # cache tekstu/OCR stron (null = wyłączony)
 
 classification:
   head_chars: 1500            # zakres „nagłówka” dla sygnałów ze scope: head
@@ -24,6 +25,7 @@ llm:
   structured_output: json_schema   # json_schema | json_object | prompt  (zależnie od możliwości serwera)
   max_retries: 2
   cache_dir: .cache/llm            # cache odpowiedzi — szybkie powtórne przebiegi ewaluacji
+  prompt_suffix: ""                # dopisywane do promptu systemowego, np. "/no_think" dla modeli Qwen3
 
 output:
   write_traces: true
@@ -32,3 +34,6 @@ output:
   #   empty_file = plik 0 bajtów · empty_object = "{}" · none = brak pliku   (do potwierdzenia z UZP)
   unknown_output: empty_file
   indent: 2
+
+pipeline:
+  workers: 4                  # ile dokumentów przetwarzamy równolegle (wywołania LLM czekają na sieć)
