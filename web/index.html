@@ -1,9 +1,5 @@
 <!doctype html>
-<!--
-  PLACEHOLDER UI — minimalny, działający interfejs do testów API.
-  TODO(ui): docelowy design (podgląd PDF z podświetleniem źródeł wartości — PDF.js, lista spraw, edytor klas).
-  Kontrakt API: odwolania2json/api/app.py. Biblioteki trzymamy lokalnie w web/vendor/ (on-premise, bez CDN).
--->
+<!-- Interfejs działa bez Node.js i korzysta z lokalnych plików PDF.js. -->
 <html lang="pl">
 <head>
   <meta charset="utf-8">
@@ -15,21 +11,74 @@
   <header>
     <h1>Odwołania2JSON</h1>
     <p class="muted" id="health">Łączenie z API…</p>
+    <button id="theme-toggle" type="button">Ciemny motyw</button>
   </header>
 
-  <main>
-    <section class="card">
-      <h2>1. Wgraj dokumenty (PDF)</h2>
-      <form id="upload">
-        <input type="file" id="files" accept="application/pdf" multiple required>
-        <button type="submit">Przetwórz</button>
-      </form>
-      <p class="muted" id="status"></p>
-    </section>
+  <main class="workspace">
+    <aside id="documents" class="documents">
+      <div class="panel-heading">
+        <h2>Dokumenty</h2>
+      </div>
+    </aside>
 
-    <section id="results"></section>
+    <section class="details">
+      <section id="pdf-panel" class="pdf-panel card">
+        <div class="panel-heading">
+          <h2>Podgląd PDF</h2>
+        </div>
+
+        <div class="pdf-toolbar">
+          <button id="prev-page" type="button" disabled>Poprzednia</button>
+          <span id="page-label" class="muted">Brak dokumentu</span>
+          <button id="next-page" type="button" disabled>Następna</button>
+          <span class="pdf-zoom-controls" aria-label="Zoom podglądu PDF">
+            <button id="zoom-out" type="button" disabled title="Oddal stronę">−</button>
+            <button id="zoom-reset" type="button" disabled title="Dopasuj stronę">100%</button>
+            <button id="zoom-in" type="button" disabled title="Przybliż stronę">+</button>
+          </span>
+        </div>
+
+        <div id="pdf-pages"></div>
+      </section>
+
+      <section class="right-panel">
+        <section id="json-panel" class="card">
+          <h2>Wynik JSON</h2>
+          <p class="muted">Wybierz przetworzony dokument.</p>
+        </section>
+
+        <section id="fields-panel" class="card">
+          <h2>Źródła pól</h2>
+        </section>
+      </section>
+    </section>
   </main>
 
-  <script src="/static/app.js"></script>
+<section class="card upload-card">
+    <h2>Wgraj dokumenty PDF</h2>
+
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <p>Przeciągnij tutaj pliki PDF</p>
+      <p class="muted">lub</p>
+
+      <label class="button" for="files">Wybierz pliki</label>
+
+      <input
+        id="files"
+        type="file"
+        accept="application/pdf"
+        multiple
+        hidden
+      >
+    </div>
+
+    <div class="upload-actions">
+      <button id="process" type="button" disabled>Przetwórz PDF-y</button>
+      <p id="status" class="muted" role="status" aria-live="polite">
+        Wybierz pliki, a następnie kliknij „Przetwórz PDF-y”.
+      </p>
+    </div>
+  </section>
+<script type="module" src="/static/app.js"></script>
 </body>
 </html>
