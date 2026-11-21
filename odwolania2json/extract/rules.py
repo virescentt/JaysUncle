@@ -37,6 +37,17 @@ _SHAPE_BY_TYPE = {"date": "date", "number": "amount"}
 _FILLER = {"", "nr", "numer", "no"}  # allowed between a mid-sentence label and its value
 _OPEN_Q, _CLOSE_Q = "„“\"«", "”“\"»"
 _LEADER = " \t.:_-"  # separators between a label and its value ("Label ..... value")
+_WRAP_MIN = 60  # a first line at least this long is assumed to be wrapped
+
+
+def _wrapped(raw: str, so_far: str, widths: list[int]) -> bool:
+    """Is `raw` the continuation of a wrapped value? `widths` = physical lengths of the lines taken so far."""
+    first = raw.split(None, 1)[0]
+    if first[0].islower() or _open_quote(so_far):
+        return True
+    if len(widths) == 1:
+        return widths[0] >= _WRAP_MIN
+    return widths[-1] + 1 + len(first) > max(widths)  # the next word would not have fit on the previous line
 
 
 def _shape(field: FieldSpec) -> re.Pattern | None:
@@ -106,10 +117,12 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
         rest = after.lstrip(_LEADER)
         residual = all_re.sub("", rest).strip(_LEADER)
         lines: list[tuple[int, int]] = []
+        widths: list[int] = []
         if residual:
             if all_re.search(rest) or (before.strip() and not after.lstrip().startswith(":")):
                 continue  # mixed header row, or the label sits inside a sentence → not a field label
             lines.append((m.end() + len(after) - len(rest), le))
+            widths.append(le - ls)
         pos = (lines[-1][1] if lines else le) + 1
         limit = MAX_VALUE_LINES if multiline else 1
         while pos < len(folded) and len(lines) < limit:
@@ -122,10 +135,10 @@ def _from_labels(field: FieldSpec, text: str, folded: str, all_re: re.Pattern) -
             elif all_re.search(raw):
                 break
             else:
-                so_far = folded[lines[0][0] : lines[-1][1]] if lines else ""
-                if lines and not (raw.lstrip()[0].islower() or _open_quote(so_far)):
+                if lines and not _wrapped(raw, folded[lines[0][0] : lines[-1][1]], widths):
                     break
                 lines.append((pos, e))
+                widths.append(e - pos)
             pos = e + 1
         if lines:
             a, b = lines[0][0], lines[-1][1]
