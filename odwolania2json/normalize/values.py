@@ -18,6 +18,60 @@ POLISH_MONTHS = {
 
 @normalizer("date_pl")
 def date_pl(value):
+    import re
+    from datetime import date
+
+    if value is None:
+        return None
+
+    text = str(value).strip().lower()
+
+    text = re.sub(r"\b(dnia)\b\s*", "", text)
+    text = re.sub(r"\s+r\.$", "", text)
+    text = re.sub(r"\s+roku$", "", text)
+    text = text.strip()
+
+    # ISO YYYY-MM-DD
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", text)
+    if m:
+        try:
+            return date(
+                int(m.group(1)),
+                int(m.group(2)),
+                int(m.group(3))
+            ).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    # DD.MM.YYYY lub DD-MM-YYYY
+    m = re.fullmatch(r"(\d{1,2})[.-](\d{1,2})[.-](\d{4})", text)
+    if m:
+        try:
+            return date(
+                int(m.group(3)),
+                int(m.group(2)),
+                int(m.group(1))
+            ).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    # 3 lipca 2026
+    m = re.fullmatch(r"(\d{1,2})\s+([a-ząćęłńóśźż]+)\s+(\d{4})", text)
+    if m:
+        day = int(m.group(1))
+        month = POLISH_MONTHS.get(m.group(2))
+        year = int(m.group(3))
+
+        if month is None:
+            return None
+
+        try:
+            return date(year, month, day).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    return None
+
     """Any Polish date notation → ISO 'YYYY-MM-DD'.
 
     Examples:
@@ -30,11 +84,40 @@ def date_pl(value):
         'brak daty'                → None
         '31.02.2026'               → None   (invalid date)
     """
-    raise NotImplementedError
+    # raise NotImplementedError
 
 
 @normalizer("amount_pl")
 def amount_pl(value):
+    import re
+
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip()
+
+    # usuń waluty
+    text = re.sub(r"\b(zł|PLN)\b", "", text, flags=re.IGNORECASE)
+
+    # zostaw tylko cyfry, przecinki, kropki i minus
+    text = re.sub(r"[^\d,.-]", "", text)
+
+    # usuń separatory tysięcy
+    text = text.replace(".", "")
+
+    # polski separator dziesiętny
+    text = text.replace(",", ".")
+
+    if not text:
+        return None
+
+    try:
+        return float(text)
+    except ValueError:
+        return None
     """Polish money notation → float.
 
     Examples:
@@ -45,11 +128,22 @@ def amount_pl(value):
         10000            → 10000.0
         'brak'           → None
     """
-    raise NotImplementedError
+    #raise NotImplementedError
 
 
 @normalizer("account_number")
 def account_number(value):
+    import re
+
+    if value is None:
+        return None
+
+    digits = re.sub(r"\D", "", str(value))
+
+    if len(digits) != 26:
+        return None
+
+    return digits
     """Polish bank account (NRB/IBAN) → 26 digits, without 'PL' and spaces.
 
     Examples:
@@ -58,11 +152,33 @@ def account_number(value):
         '60 1010 1010 0081 3622 3100 0000'   → '60101010100081362231000000'
         '1234'                               → None   (not 26 digits)
     """
-    raise NotImplementedError
+    #raise NotImplementedError
 
 
 @normalizer("bzp")
 def bzp(value):
+    import re
+
+    if value is None:
+        return None
+
+    text = str(value).strip()
+
+    m = re.fullmatch(
+        r"\s*(\d{4})\s*/\s*BZP\s*(\d{8})(/\d{2})?\s*",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if not m:
+        return None
+
+    year = m.group(1)
+    number = m.group(2)
+    suffix = m.group(3) or ""
+
+    return f"{year}/BZP{number}{suffix}"
+
     """BZP notice number → 'YYYY/BZP ########' without spaces (optional '/##' suffix for corrections).
 
     Examples:
@@ -71,11 +187,40 @@ def bzp(value):
         '2026 / BZP 00999778'   → '2026/BZP00999778'
         '641651-2025'           → None   (that is a TED number)
     """
-    raise NotImplementedError
+    #raise NotImplementedError
 
 
 @normalizer("ted")
 def ted(value):
+    import re
+
+    if value is None:
+        return None
+
+    text = str(value).strip()
+
+    # BZP to nie TED
+    if "BZP" in text.upper():
+        return None
+
+    # Format: 641651-2025
+    m = re.fullmatch(r"(\d{6})-(\d{4})", text)
+    if m:
+        return text
+
+    # Format: 2026/S 241-999983
+    m = re.fullmatch(
+        r"(\d{4})\s*/\s*S\s*\d+\s*-\s*(\d{6})",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if m:
+        year = m.group(1)
+        number = m.group(2)
+        return f"{number}-{year}"
+
+    return None
     """TED notice number → 'NNNNNN-YYYY'.
 
     Examples:
@@ -84,4 +229,4 @@ def ted(value):
         '2025/S 123-363730'     → '363730-2025'
         '2026/BZP 00999263'     → None   (that is a BZP number)
     """
-    raise NotImplementedError
+    #raise NotImplementedError
