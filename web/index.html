@@ -1,35 +1,138 @@
 <!doctype html>
 <!--
-  PLACEHOLDER UI — minimalny, działający interfejs do testów API.
-  TODO(ui): docelowy design (podgląd PDF z podświetleniem źródeł wartości — PDF.js, lista spraw, edytor klas).
-  Kontrakt API: odwolania2json/api/app.py. Biblioteki trzymamy lokalnie w web/vendor/ (on-premise, bez CDN).
+  Panel webowy Odwołania2JSON — czysty HTML/CSS/JS, bez kroku budowania i bez CDN (działa offline, on-premise).
+  Kontrakt API: odwolania2json/api/app.py (docstring na górze). Uruchomienie: ./start.sh web → http://localhost:8000
 -->
 <html lang="pl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Odwołania2JSON</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d4ed8'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // theme chosen by the user (auto / light / dark) applied before the first paint
+    try { const t = localStorage.getItem("o2j-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
 </head>
 <body>
-  <header>
-    <h1>Odwołania2JSON</h1>
-    <p class="muted" id="health">Łączenie z API…</p>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">{ }</span>
+      <div>
+        <h1>Odwołania2JSON</h1>
+        <p class="tagline">od dokumentów do danych</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Widoki">
+      <button class="tab" role="tab" id="tab-btn-docs" aria-controls="tab-docs" aria-selected="true" data-tab="docs">Dokumenty</button>
+      <button class="tab" role="tab" id="tab-btn-classes" aria-controls="tab-classes" aria-selected="false" data-tab="classes" tabindex="-1">Klasy dokumentów</button>
+    </nav>
+    <div class="health" id="health" role="status"><span class="dot" aria-hidden="true"></span><span id="health-text">Łączenie z API…</span></div>
+    <button class="icon-btn" id="theme-toggle" type="button" title="Motyw: automatyczny" aria-label="Zmień motyw (automatyczny / jasny / ciemny)">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18V3z"/><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+    </button>
   </header>
 
-  <main>
-    <section class="card">
-      <h2>1. Wgraj dokumenty (PDF)</h2>
-      <form id="upload">
-        <input type="file" id="files" accept="application/pdf" multiple required>
-        <button type="submit">Przetwórz</button>
-      </form>
-      <p class="muted" id="status"></p>
-    </section>
+  <!-- ===================================================== DOKUMENTY -->
+  <main id="tab-docs" class="view view-docs" role="tabpanel" aria-labelledby="tab-btn-docs">
+    <aside class="sidebar" aria-label="Lista dokumentów">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-describedby="drop-hint">
+        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0-4 4m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        <strong>Upuść pliki PDF tutaj</strong>
+        <span id="drop-hint">albo kliknij, aby wybrać z dysku (można kilka naraz)</span>
+        <input type="file" id="file-input" accept=".pdf,application/pdf" multiple hidden>
+      </div>
+      <div class="list-head">
+        <h2>Dokumenty <span class="count" id="doc-count">0</span></h2>
+        <button class="link-btn" id="clear-docs" type="button" hidden>Wyczyść listę</button>
+      </div>
+      <ul id="doc-list" class="doc-list" aria-label="Przetworzone dokumenty"></ul>
+      <p class="side-note">Rodzaj dokumentu rozpoznawany jest po <strong>treści</strong>, nie po nazwie pliku. Dokument spoza obsługiwanych klas dostaje <strong>pusty plik .json</strong>.</p>
+    </aside>
 
-    <section id="results"></section>
+    <section class="detail" id="detail" aria-live="polite">
+      <div class="empty-state" id="empty-state">
+        <h2>Jak to działa</h2>
+        <ol class="steps">
+          <li><span class="step-n">1</span><div><strong>Wgraj PDF-y</strong> — odwołanie do KIO, pełnomocnictwo, potwierdzenie przelewu; także skany (OCR).</div></li>
+          <li><span class="step-n">2</span><div><strong>Klasyfikacja i ekstrakcja</strong> — system rozpoznaje rodzaj dokumentu i wyodrębnia pola do kanonicznego JSON.</div></li>
+          <li><span class="step-n">3</span><div><strong>Przejrzystość</strong> — kliknij pole, a zobaczysz na stronie, skąd pochodzi wartość, jaką metodą ją znaleziono i z jaką pewnością.</div></li>
+        </ol>
+        <p class="muted">Niepewne wartości zwracamy jako <code>null</code> — błędna wartość jest gorsza niż brak wartości.</p>
+      </div>
+
+      <div class="doc-view" id="doc-view" hidden>
+        <header class="doc-head" id="doc-head"></header>
+        <div class="doc-body">
+          <section class="pages-pane" aria-label="Podgląd stron">
+            <div class="pane-toolbar">
+              <span id="pages-info" class="muted"></span>
+              <span class="spacer"></span>
+              <label class="check" title="Pokaż położenie wszystkich wyodrębnionych wartości (inaczej tylko wskazanego pola)"><input type="checkbox" id="show-all-boxes" checked> podświetlenia</label>
+              <div class="zoom" role="group" aria-label="Powiększenie">
+                <button class="icon-btn small" id="zoom-out" type="button" aria-label="Pomniejsz">−</button>
+                <span id="zoom-val" aria-live="polite">100%</span>
+                <button class="icon-btn small" id="zoom-in" type="button" aria-label="Powiększ">+</button>
+              </div>
+            </div>
+            <div class="pages-scroll" id="pages"></div>
+          </section>
+          <section class="data-pane" aria-label="Dane wyodrębnione">
+            <div class="pane-toolbar subtabs" role="tablist" aria-label="Dane">
+              <button class="subtab" role="tab" aria-selected="true" data-sub="fields" id="sub-fields">Pola</button>
+              <button class="subtab" role="tab" aria-selected="false" data-sub="json" id="sub-json" tabindex="-1">JSON</button>
+              <span class="spacer"></span>
+              <label class="check" id="only-filled-wrap"><input type="checkbox" id="only-filled"> tylko wypełnione</label>
+            </div>
+            <div class="data-scroll" id="fields-panel" role="tabpanel" aria-labelledby="sub-fields"></div>
+            <div class="data-scroll" id="json-panel" role="tabpanel" aria-labelledby="sub-json" hidden></div>
+          </section>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <!-- ===================================================== KLASY DOKUMENTÓW -->
+  <main id="tab-classes" class="view view-classes" role="tabpanel" aria-labelledby="tab-btn-classes" hidden>
+    <aside class="sidebar" aria-label="Klasy dokumentów">
+      <div class="list-head">
+        <h2>Klasy dokumentów</h2>
+        <button class="btn small" id="ws-new" type="button">+ Nowa klasa</button>
+      </div>
+      <ul id="class-list" class="class-list"></ul>
+      <p class="side-note">Każda klasa to <strong>jeden plik YAML</strong> w <code>config/doc_types/</code>: sygnały rozpoznawania, struktura JSON, wskazówki ekstrakcji. Nowa klasa <strong>nie wymaga zmian w kodzie</strong>.</p>
+    </aside>
+
+    <section class="workshop">
+      <header class="ws-head">
+        <div>
+          <h2 id="ws-title">Wybierz klasę z listy</h2>
+          <p class="muted" id="ws-file"></p>
+        </div>
+        <span class="dirty" id="ws-dirty" hidden>niezapisane zmiany</span>
+      </header>
+      <div class="editor">
+        <pre class="gutter" id="ws-gutter" aria-hidden="true">1</pre>
+        <textarea id="ws-yaml" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="Treść pliku YAML klasy dokumentu" aria-describedby="ws-keys" disabled></textarea>
+      </div>
+      <div class="ws-actions">
+        <button class="btn" id="ws-check" type="button" disabled>Sprawdź</button>
+        <button class="btn" id="ws-test" type="button" disabled>Testuj na PDF…</button>
+        <input type="file" id="ws-test-file" accept=".pdf,application/pdf" hidden>
+        <button class="btn primary" id="ws-save" type="button" disabled>Zapisz</button>
+        <button class="btn ghost" id="ws-revert" type="button" disabled>Przywróć</button>
+        <span class="spacer"></span>
+        <span class="muted small" id="ws-keys">Ctrl/⌘+S zapisz · Ctrl/⌘+Enter sprawdź · Tab = 2 spacje (Esc, potem Tab — wyjście)</span>
+      </div>
+      <div id="ws-msg" class="ws-msg" aria-live="polite"></div>
+      <div id="ws-result"></div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>
