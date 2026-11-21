@@ -761,9 +761,9 @@ pre.json:focus-visible { outline-offset: -3px; }
 .wz-steps li + li { border-left: 1px solid var(--border-strong); }
 .wz-step { width: 100%; display: flex; align-items: center; gap: var(--s2); font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); background: var(--surface); border: 0; padding: var(--s3) var(--s4); cursor: pointer; text-align: left; }
 .wz-step:disabled { cursor: default; }
-.wz-step:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
-.wz-step:active:not(:disabled) { background: var(--surface-3); }
-.wz-step.current { color: var(--accent-text); background: var(--accent); }
+.wz-step:hover:not(:disabled):not(.current) { background: var(--surface-2); color: var(--text); }
+.wz-step:active:not(:disabled):not(.current) { background: var(--surface-3); }
+.wz-step.current { color: var(--accent-text); background: var(--accent); cursor: default; }
 .wz-step.done { color: var(--text); }
 .wz-n { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid currentColor; border-radius: var(--radius-sm); font-size: var(--fs-xs); flex: none; }
 .wz-step.done .wz-n::after { content: ""; }
@@ -801,6 +801,23 @@ pre.json:focus-visible { outline-offset: -3px; }
 .cf { display: grid; gap: var(--s4); }
 .cf-sec { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--s5); margin: 0; display: grid; gap: var(--s4); min-width: 0; }
 .cf-sec > h3 { font-size: var(--fs-lg); }
+/* form sections as collapsible blocks (the wizard body keeps the plain .cf-sec look) */
+details.cf-sec { display: block; padding: 0; }
+details.cf-sec > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s4) var(--s5); border-radius: var(--radius);
+}
+details.cf-sec > summary::-webkit-details-marker { display: none; }
+details.cf-sec > summary::before {
+  content: ""; flex: none; width: 7px; height: 7px; margin: 0 var(--s1);
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 140ms ease;
+}
+details.cf-sec[open] > summary::before { transform: rotate(45deg); }
+details.cf-sec > summary:hover { background: var(--surface-2); }
+details.cf-sec[open] > summary { border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }
+details.cf-sec > summary h3 { font-size: var(--fs-lg); margin: 0; }
+.cf-sec-sum { margin-left: auto; color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+.cf-sec-body { padding: var(--s4) var(--s5) var(--s5); display: grid; gap: var(--s4); min-width: 0; }
 .cf h4 { font-size: var(--fs-sm); font-weight: 650; }
 .cf-hint { font-size: var(--fs-sm); color: var(--muted); max-width: 75ch; }
 .cf-sec > .cf-hint { margin-top: calc(-1 * var(--s3)); }
@@ -870,8 +887,8 @@ pre.json:focus-visible { outline-offset: -3px; }
 .cf-field, .cf-fields > * { min-width: 0; max-width: 100%; }
 /* read-only overview of a fixed output structure (built-in types) */
 .cf-tree { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
-.cf-sec > .cf-tree { border-top: 1px solid var(--border); margin-bottom: var(--s3); }
-.cf-sec > .cf-tree > li { padding: var(--s2) 0; border-bottom: 1px solid var(--border); }
+.cf-sec-body > .cf-tree { border-top: 1px solid var(--border); margin-bottom: var(--s3); }
+.cf-sec-body > .cf-tree > li { padding: var(--s2) 0; border-bottom: 1px solid var(--border); }
 .cf-tree .cf-tree { margin: var(--s1) 0 0 var(--s2); padding-left: var(--s3); border-left: 1px solid var(--border); }
 .cf-tree .cf-tree > li { padding: 3px 0; }
 .cf-tree-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s1) var(--s2); min-width: 0; }

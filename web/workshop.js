@@ -394,13 +394,6 @@ async function newClass() {
       el.result.innerHTML = "";
       showMode();
     },
-    onFullForm: async (yaml) => {
-      closeWizard();
-      if (ws.mode !== "form") ws.mode = "form";
-      await setEditor(yaml, { id: null, file: null, name: null });
-      ws.current.original = ""; // nothing saved yet → keep the "unsaved" state
-      updateHeader();
-    },
     onTest: async (file, yaml) => {
       el.yaml.value = yaml;
       await test(file, { fromWizard: true });

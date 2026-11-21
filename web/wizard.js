@@ -1,7 +1,7 @@
 // Kreator nowego typu dokumentu (3 kroki) — zakładka "Typy dokumentów".
 // 1. Nazwa  2. Jak rozpoznać (frazy, opcjonalnie z przykładowego PDF)  3. Jakie dane odczytać (pola, tryb llm).
 // Wynik: dane klasy → /api/doc-types/dump → YAML, który przechodzi zwykłe validate / test / zapis.
-// Pełny formularz (wagi, wzorce, reguły) jest dostępny potem jako "Edytuj szczegóły".
+// Po zapisie nowy typ otwiera się w pełnym formularzu (wagi, wzorce, reguły).
 
 import { esc, api } from "./util.js";
 import { reEscape, slugify } from "./classform.js";
@@ -23,7 +23,7 @@ const blankField = () => ({ label: "", description: "", kind: "string" });
 
 let wz = null; // state of the open wizard
 let root = null;
-let hooks = null; // {jsonPost, getHealth, onTest(file, yaml), onSave(yaml, data), onFullForm(yaml), onCancel()}
+let hooks = null; // {jsonPost, getHealth, onTest(file, yaml), onSave(yaml, data), onCancel()}
 
 export const wizardOpen = () => !!wz;
 export const wizardDirty = () =>
@@ -252,7 +252,6 @@ function render() {
       <button type="button" class="btn" data-act="back" ${wz.step === 0 ? "hidden" : ""}>← Wstecz</button>
       <button type="button" class="link-btn subtle" data-act="cancel">Anuluj</button>
       <span class="spacer"></span>
-      <button type="button" class="link-btn subtle" data-act="full">Edytuj szczegóły (pełny formularz)</button>
       ${last && wz.sample ? '<button type="button" class="btn" data-act="test">Sprawdź na pliku</button>' : ""}
       ${last ? `<button type="button" class="btn primary" data-act="save" ${hooks.getHealth()?.readonly ? 'disabled title="Zapisywanie zostało wyłączone przez administratora"' : ""}>Zapisz</button>` : '<button type="button" class="btn primary" data-act="next">Dalej →</button>'}
     </div>`;
@@ -328,11 +327,9 @@ function bind() {
         return root.querySelector(".wz-field:last-child input")?.focus();
       case "cancel":
         return hooks.onCancel();
-      case "full":
       case "test":
       case "save": {
-        const upTo = b.dataset.act === "full" ? 0 : STEPS.length;
-        for (let s = 0; s < upTo; s++) {
+        for (let s = 0; s < STEPS.length; s++) {
           const p = problems(s);
           if (p.length) {
             wz.step = s;
@@ -340,11 +337,9 @@ function bind() {
             return render();
           }
         }
-        if (b.dataset.act === "full" && !wz.name.trim()) wz.name = "Nowy typ dokumentu";
         try {
           b.disabled = true;
           const yaml = await toYaml();
-          if (b.dataset.act === "full") return hooks.onFullForm(yaml);
           if (b.dataset.act === "test") return await hooks.onTest(wz.sample, yaml);
           return await hooks.onSave(yaml, classData());
         } catch (err) {

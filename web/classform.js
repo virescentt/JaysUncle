@@ -3,7 +3,7 @@
 // Klucze, których formularz nie obsługuje (strategy, params, section, enum, …), są przechowywane i oddawane bez zmian,
 // kolejność kluczy jest zachowana.
 
-import { humanizeKey } from "./util.js";
+import { humanizeKey, plural } from "./util.js";
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -346,10 +346,25 @@ export function renderForm(root, m, ctx) {
     );
   };
   const btn = (label, onclick, attrs = {}) => h("button", { type: "button", class: "btn small", onclick, ...attrs }, label);
-  const section = (title, intro, ...kids) => {
+  // Collapsible sections: "Podstawowe informacje" open, the rest folded with a one-line summary; the open/closed
+  // state lives in the model, so a re-render after an edit does not fold the section the user is working in.
+  m.openSecs ??= { basic: true };
+  const section = (key, title, summary, intro, ...kids) => {
     const id = nextId("sec");
-    return h("section", { class: "cf-sec", "aria-labelledby": id }, h("h3", { id, text: title }), intro ? hint(intro) : null, ...kids);
+    return h(
+      "details",
+      { class: "cf-sec", open: ctx.isNew || m.openSecs[key] ? true : null, ontoggle: (e) => (m.openSecs[key] = e.target.open) },
+      h("summary", {}, h("h3", { id, text: title }), summary ? h("span", { class: "cf-sec-sum", text: summary }) : null),
+      h("div", { class: "cf-sec-body", role: "group", "aria-labelledby": id }, intro ? hint(intro) : null, ...kids),
+    );
   };
+  const countFields = (nodes) =>
+    nodes.reduce(
+      (n, f) =>
+        n +
+        (f.type === "object" ? countFields(f.children || []) : f.type === "array" && f.items?.type === "object" ? countFields(f.items.children || []) : 1),
+      0,
+    );
 
   // ---------------------------------------------------------------- 1. podstawowe
   const idMsg = h("small", { class: "cf-help" });
@@ -392,7 +407,9 @@ export function renderForm(root, m, ctx) {
   });
 
   const sec1 = section(
+    "basic",
     "Podstawowe informacje",
+    m.enabled === false ? "wyłączony" : "rozpoznawany",
     null,
     field("Nazwa typu dokumentu", nameInput, "Tak ten typ będzie widoczny na liście dokumentów."),
     field("Krótki opis", text(m, "description", { rows: 2, placeholder: "Czym jest dokument i kto go wystawia." })),
@@ -520,7 +537,11 @@ export function renderForm(root, m, ctx) {
   };
 
   const sec2 = section(
+    "recognise",
     "Jak rozpoznać dokument",
+    `${m.signals.length} ${plural(m.signals.length, ["fraza", "frazy", "fraz"])}${
+      m.negative.length ? ` · ${m.negative.length} ${plural(m.negative.length, ["wykluczająca", "wykluczające", "wykluczających"])}` : ""
+    } · próg ${m.min_score} pkt`,
     "Wpisz zwroty, które zwykle występują w tym dokumencie (np. jego tytuł). Każda znaleziona fraza daje punkty — Niska 1, Średnia 2, Wysoka 4. Wielkość liter i polskie znaki zwykle nie mają znaczenia.",
     phraseList(m.signals, "pos", "Dokument zawiera…", "Typowe zwroty i słowa z tego dokumentu.", "+ Dodaj frazę"),
     phraseList(m.negative, "neg", "Wyklucz, jeśli dokument zawiera…", "Zwroty, które świadczą, że to INNY dokument — odejmują punkty.", "+ Dodaj frazę wykluczającą"),
@@ -544,7 +565,9 @@ export function renderForm(root, m, ctx) {
   modeHelp.id = `${modeSel.id}-help`;
   modeSel.setAttribute("aria-describedby", modeHelp.id);
   const sec3 = section(
+    "read",
     "Jak odczytywać dane",
+    m.mode ? (MODE_LABELS[m.mode] || m.mode).split(" — ")[0] : "ustawienie programu",
     null,
     modes.length
       ? h("div", { class: "cf-lbl" }, h("label", { for: modeSel.id, text: "Sposób odczytu" }), modeSel, modeHelp)
@@ -711,13 +734,17 @@ export function renderForm(root, m, ctx) {
   const fixedStructure = !ctx.isNew && (!m.mode || m.mode === "rules") && !m.editStructure;
   const sec4 = fixedStructure
     ? section(
+        "fields",
         "Dane do odczytania",
+        `${countFields(m.fields)} ${plural(countFields(m.fields), ["pole", "pola", "pól"])}`,
         "Te dane system odczytuje z dokumentu. Układ wyniku jest stały (wymagany format pliku JSON), a odczyt działa na regułach — tu niczego nie trzeba ustawiać.",
         fieldTree(m.fields),
         btn("Zmień strukturę wyniku (dla informatyków)", () => ((m.editStructure = true), rerender()), { class: "btn small ghost" }),
       )
     : section(
+        "fields",
         "Dane do odczytania",
+        `${countFields(m.fields)} ${plural(countFields(m.fields), ["pole", "pola", "pól"])}`,
         "Każde pole to jedna wartość w wyniku. „Grupa pól” łączy kilka pól (np. dane zamawiającego), „lista” — powtarzające się elementy (np. kilku pełnomocników).",
         fieldList(m.fields, 0, "+ Dodaj pole"),
       );
