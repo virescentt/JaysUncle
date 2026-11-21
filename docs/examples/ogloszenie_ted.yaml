@@ -1,0 +1,33 @@
+# PRZYKŁAD nowej klasy dokumentu (demo „bez zmian w kodzie”).
+# Żeby włączyć: skopiuj do config/doc_types/. Uwaga: wtedy „negatywny przykład” organizatora
+# (ogłoszenie TED) zacznie dostawać JSON — w zgłoszeniu konkursowym ta klasa ma zostać wyłączona.
+id: ogloszenie_ted
+name: Ogłoszenie o zamówieniu (TED)
+description: Ogłoszenie o zamówieniu opublikowane w Dzienniku Urzędowym UE (TED).
+classification:
+  min_score: 4
+  signals:
+    - { pattern: 'ogłoszenie o zamówieniu', weight: 2 }
+    - { pattern: 'oficjalna nazwa', weight: 2 }
+    - { pattern: '\d{5,6}-\d{4} - ', weight: 2, scope: head }
+output:
+  ogloszenie:
+    type: object
+    properties:
+      numer_ted:
+        type: string
+        description: Numer ogłoszenia TED, format NNNNNN-YYYY.
+        patterns: ['(?P<value>\d{5,6}-\d{4})']
+        scope: head
+      nabywca:
+        type: string
+        description: Oficjalna nazwa zamawiającego (nabywcy).
+        patterns: ['Oficjalna nazwa:\s*(?P<value>[^\n]+)']
+      tytul:
+        type: string
+        description: Tytuł postępowania.
+        patterns: ['Tytuł:\s*(?P<value>[^\n]+)']
+      numer_postepowania:
+        type: string
+        description: Wewnętrzny identyfikator postępowania.
+        patterns: ['Wewnętrzny identyfikator:\s*(?P<value>[^\n]+)']

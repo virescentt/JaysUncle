@@ -17,4 +17,4 @@
 7. Sprawdź konfigurację: `python -m odwolania2json doc-types` oraz `python -m odwolania2json schema <nowa_klasa>`.
 8. Uruchom na przykładowym dokumencie: `python -m odwolania2json classify plik.pdf`, potem `./start.sh`.
 
-Przykład demonstracyjny (TODO): klasa `ogloszenie_ted` dla „negatywnego przykładu” organizatora.
+Gotowy przykład: [docs/examples/ogloszenie_ted.yaml](examples/ogloszenie_ted.yaml) — klasa dla „negatywnego przykładu” organizatora (ogłoszenie TED). Po skopiowaniu do `config/doc_types/` program rozpoznaje ogłoszenie i wyciąga numer TED, nabywcę, tytuł i numer postępowania — bez zmian w kodzie.
