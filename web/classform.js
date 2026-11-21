@@ -648,13 +648,17 @@ export function renderForm(root, m, ctx) {
     });
     return h(
       "details",
-      { class: "cf-field", open: (n.open ?? (depth === 0 || !!n.isNew)) || null, ontoggle: (e) => (n.open = e.target.open) },
+      {
+        class: "cf-field",
+        open: (n.open ?? (!!n.isNew || (depth === 0 && n.type !== "object" && n.type !== "array"))) || null,
+        ontoggle: (e) => (n.open = e.target.open),
+      },
       h("summary", {}, sumKey, h("span", { class: "cf-type", text: TYPE_LABELS[n.type] || n.type }), sumDesc),
       n.type === "object" ? null : field("Opis pola", descInput(n), "Opisz pole tak, jak koledze z pracy — co to za wartość i jak ją rozpoznać.", "cf-desc-wrap"),
       h(
         "div",
         { class: "cf-row" },
-        field("Nazwa pola w wyniku", keyInput, "Małe litery, bez spacji, np. data_wystawienia."),
+        field("Nazwa pola w wyniku", keyInput, "Klucz w pliku JSON: bez spacji i polskich liter, np. data_wystawienia."),
         field("Rodzaj", select(n, "type", typeOpts, onType(n))),
         h(
           "div",
@@ -677,11 +681,46 @@ export function renderForm(root, m, ctx) {
     );
   };
 
-  const sec4 = section(
-    "Dane do odczytania",
-    "Każde pole to jedna wartość w wyniku. „Grupa pól” łączy kilka pól (np. dane zamawiającego), „lista” — powtarzające się elementy (np. kilku pełnomocników).",
-    fieldList(m.fields, 0, "+ Dodaj pole"),
-  );
+  // Built-in types are read by rules and their output is a fixed JSON format: show WHAT is read, compactly.
+  // Editing that structure is a job for IT (behind a button); types from the wizard (mode llm) stay editable.
+  const firstSentence = (d) => String(d).replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/)[0];
+  const typeLabel = (n) =>
+    n.type === "array" && n.items && n.items.type !== "object" ? `lista (${TYPE_LABELS[n.items.type] || n.items.type})` : TYPE_LABELS[n.type] || n.type;
+  const fieldTree = (nodes) =>
+    h(
+      "ul",
+      { class: "cf-tree" },
+      nodes.map((n) => {
+        const kids = n.type === "object" ? n.children : n.type === "array" && n.items?.type === "object" ? n.items.children : null;
+        return h(
+          "li",
+          {},
+          h(
+            "div",
+            { class: "cf-tree-row" },
+            h("span", { class: "cf-tree-name", text: humanizeKey(n.key) }),
+            h("span", { class: "cf-type", text: typeLabel(n) }),
+            n.orig?.derived_from ? h("span", { class: "cf-type cf-type-dict", text: "ze słownika" }) : null,
+            h("code", { class: "cf-tree-key", text: n.key }),
+          ),
+          n.description && !kids?.length ? h("p", { class: "cf-tree-desc", text: firstSentence(n.description) }) : null,
+          kids?.length ? fieldTree(kids) : null,
+        );
+      }),
+    );
+  const fixedStructure = !ctx.isNew && (!m.mode || m.mode === "rules") && !m.editStructure;
+  const sec4 = fixedStructure
+    ? section(
+        "Dane do odczytania",
+        "Te dane system odczytuje z dokumentu. Układ wyniku jest stały (wymagany format pliku JSON), a odczyt działa na regułach — tu niczego nie trzeba ustawiać.",
+        fieldTree(m.fields),
+        btn("Zmień strukturę wyniku (dla informatyków)", () => ((m.editStructure = true), rerender()), { class: "btn small ghost" }),
+      )
+    : section(
+        "Dane do odczytania",
+        "Każde pole to jedna wartość w wyniku. „Grupa pól” łączy kilka pól (np. dane zamawiającego), „lista” — powtarzające się elementy (np. kilku pełnomocników).",
+        fieldList(m.fields, 0, "+ Dodaj pole"),
+      );
 
   const onlyComments = ctx.losses?.length && ctx.losses.every((l) => /komentarz/i.test(l));
   const banner = !ctx.losses?.length
