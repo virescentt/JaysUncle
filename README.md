@@ -171,14 +171,14 @@ web/               interfejs webowy (statyczny HTML/JS, bez kroku budowania)
 evaluation/        metryka F1 i przebieg na zbiorze treningowym
 scripts/           pobieranie danych, generowanie syntetycznych skanów, benchmark OCR
 tests/             pytest (testy normalizatorów i walidatorów pełnią rolę specyfikacji)
-docs/              dokumentacja (architektura, raport jakości, dodawanie klas, dokumenty zespołu)
+docs/              dokumentacja (architektura, raport jakości, dodawanie typów dokumentów, przykład nowego typu)
 input/ output/     foldery wymagane przez organizatora
 ```
 
 ## Testy
 
 ```bash
-pytest -q        # 525 testów
+pytest -q        # 532 testy
 ruff check .
 ```
 
