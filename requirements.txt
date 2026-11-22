@@ -1,4 +1,4 @@
-# Odwołania2JSON — zależności runtime (Python 3.13+)
+# JaysUncle — zależności runtime (Python 3.13+)
 # Wszystkie komponenty open source, licencje permisywne (MIT / BSD / Apache-2.0).
 # Wersje sprawdzone na Python 3.13 (21.11.2026).
 

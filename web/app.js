@@ -1,4 +1,4 @@
-// Panel Odwołania2JSON — zakładka "Dokumenty" + nagłówek (stan API, zakładki, motyw).
+// Panel JaysUncle — zakładka "Dokumenty" + nagłówek (stan API, zakładki, motyw).
 // Kontrakt API: odwolania2json/api/app.py. Bez frameworków i bez kroku budowania.
 
 import {
