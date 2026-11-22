@@ -119,6 +119,11 @@ function switchTab(tab, { focus = false } = {}) {
 }
 
 function initTabs() {
+  // logo + name = home ("Dokumenty")
+  $("#brand-home").addEventListener("click", (e) => {
+    e.preventDefault();
+    switchTab("docs", { focus: true });
+  });
   const tabs = $$(".tabs .tab");
   for (const btn of tabs) {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -450,7 +455,7 @@ function renderPages(p) {
 
 function setZoom(z) {
   const before = pageDpi();
-  state.zoom = Math.round(Math.min(2.5, Math.max(0.5, z)) * 10) / 10;
+  state.zoom = Math.round(Math.min(3, Math.max(0.5, z)) * 100) / 100;
   $("#zoom-val").textContent = `${Math.round(state.zoom * 100)}%`;
   const wrap = $("#pages");
   wrap.style.setProperty("--zoom", state.zoom);
@@ -504,6 +509,39 @@ function initPages() {
   wrap.addEventListener("pointerup", endDrag);
   wrap.addEventListener("pointercancel", endDrag);
   wrap.addEventListener("dragstart", (e) => e.preventDefault());
+
+  // trackpad pinch zooms the page preview, not the whole browser page: Chrome / Edge / Firefox send it as
+  // wheel + ctrlKey (also Ctrl + mouse wheel), Safari as gesture events. The point under the fingers stays put.
+  const zoomAt = (z, clientX, clientY) => {
+    const old = state.zoom;
+    const r = wrap.getBoundingClientRect();
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+    setZoom(z);
+    const k = state.zoom / old;
+    if (k === 1) return;
+    wrap.scrollLeft = (wrap.scrollLeft + x) * k - x;
+    wrap.scrollTop = (wrap.scrollTop + y) * k - y;
+  };
+  wrap.addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const d = Math.max(-25, Math.min(25, e.deltaY)); // a mouse wheel notch (±100) must not jump 3×
+      zoomAt(state.zoom * Math.exp(-d * 0.01), e.clientX, e.clientY);
+    },
+    { passive: false },
+  );
+  let gestureBase = 1;
+  wrap.addEventListener("gesturestart", (e) => {
+    e.preventDefault();
+    gestureBase = state.zoom;
+  });
+  wrap.addEventListener("gesturechange", (e) => {
+    e.preventDefault();
+    zoomAt(gestureBase * e.scale, e.clientX, e.clientY);
+  });
   wrap.addEventListener(
     "click",
     (e) => {
