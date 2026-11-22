@@ -656,13 +656,15 @@ function renderFields(p) {
     if (f.value !== null) s.found += 1;
     stats.set(g, s);
   }
-  let html = "";
+  // a single group (e.g. a bank transfer: everything under "Przelew bankowy") → a plain list, no group header
+  const grouped = stats.size > 1;
+  let html = grouped ? "" : `<ul class="fields">`;
   let group = null;
   p.fields.forEach((f, i) => {
     if (attached.has(f) || (onlyFilled && f.value === null)) return;
     const { group: gRaw, label } = fieldLabel(f.path);
     const g = gRaw || "";
-    if (g !== group) {
+    if (grouped && g !== group) {
       if (group !== null) html += `</ul></details>`;
       group = g;
       const s = stats.get(g);
@@ -698,7 +700,8 @@ function renderFields(p) {
       ${moreHtml(f, derived)}
     </li>`;
   });
-  if (group !== null) html += `</ul></details>`;
+  if (grouped && group !== null) html += `</ul></details>`;
+  if (!grouped) html = html === `<ul class="fields">` ? "" : `${html}</ul>`;
   panel.innerHTML = html || `<div class="panel-note">Nie znaleziono żadnej wartości — odznacz „Tylko znalezione”, aby zobaczyć wszystkie pola.</div>`;
 }
 
