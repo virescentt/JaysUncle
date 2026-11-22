@@ -89,7 +89,10 @@ output:
         dictionary: czynnosc_powod
         description: >-
           Identyfikator powodu odwołania jako liczba całkowita 1-12 (bez zera wiodącego), ustalany WYŁĄCZNIE
-          na podstawie pierwszego zarzutu.
+          na podstawie pierwszego zarzutu. Decyduje CZYNNOŚĆ Zamawiającego, którą zaskarżono (co zrobił albo
+          czego zaniechał: odrzucił / nie odrzucił oferty, wybrał ofertę, wykluczył / nie wykluczył wykonawcy,
+          unieważnił postępowanie…), a NIE przedmiot zamówienia. 11 (OPZ) tylko wtedy, gdy zarzut dotyczy
+          samej treści opisu przedmiotu zamówienia.
         confidence: 0.6
         strategy: dictionary    # słowa kluczowe ze słownika w tekście pierwszego zarzutu
         params: *pierwszy_zarzut
@@ -246,8 +249,8 @@ output:
           type: integer
           enum: [0, 1]
           description: >-
-            null — jeśli zamawiający jest jeden; 1 — jeśli zamawiających jest więcej i ten jest oznaczony jako
-            prowadzący postępowanie / lider; 0 — jeśli zamawiających jest więcej i ten nie jest prowadzącym.
+            Tylko gdy w dokumencie jest KILKU zamawiających (zamówienie wspólne): 1 — ten jest oznaczony jako
+            prowadzący postępowanie / lider, 0 — pozostali. Gdy zamawiający jest JEDEN, zawsze null (nie 1).
           strategy: item_flag     # jeden zamawiający → brak wartości; kilku → 1 dla oznaczonego, 0 dla pozostałych
           params:
             pattern: 'prowadząc\w*\s+postępowani\w*|\blider\w*'

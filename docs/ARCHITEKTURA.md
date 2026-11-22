@@ -96,7 +96,7 @@ input/<sprawa>/<plik>.pdf
 
 | Model | Parametry | Punkty za wielkość modelu (regulamin) | F1 (tylko LLM) | Uwagi |
 |---|---|---|---|---|
-| **Qwen3.5-9B** | 9 mld | > 8–14B → 18 pkt | 0.931 | z `reasoning_effort: none` odpowiada w 1–2 s |
+| **Qwen3.5-9B** | 9 mld | > 8–14B → 18 pkt | 0.940 | z `reasoning_effort: none` odpowiada w 1–2 s |
 | Mistral-Small-3.2-24B-Instruct-2506 | 24 mld | > 14–32B → 12 pkt | 0.964 | najlepszy wynik, ale −6 pkt za wielkość |
 | Olala-v1.0-mini-7A1B | 6,8 mld (łącznie) | ≤ 8B → 20 pkt | 0.475 | „myślenia” nie da się wyłączyć: brak odpowiedzi lub minuty na dokument |
 | laguna-xs-2.1 | 33 mld (MoE, 3B aktywnych) | > 32–70B → 8 pkt | — | liczą się wszystkie parametry MoE |
