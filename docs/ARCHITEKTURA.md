@@ -88,6 +88,15 @@ input/<sprawa>/<plik>.pdf
 - Ślad każdego dokumentu: `traces/<sprawa>/<plik>.trace.json` — klasyfikacja (wynik punktowy każdej klasy, metoda, uzasadnienie), dla każdego pola: wartość, wartość surowa, metoda (`rules:pattern`, `rules:label`, `rules:<strategia>`, `llm`, `derived`), pewność, dowód (strona + fragment tekstu), kandydaci, uwagi (np. „value not found in text”, „best confidence 0.42 < 0.5 → null”), czasy etapów, błędy.
 - Panel webowy pokazuje to samo wizualnie: podgląd stron z **podświetlonym źródłem każdej wartości** (współrzędne słów z pdfplumber, a dla skanów z OCR), tabela pól z metodą, pewnością i źródłem, lista kandydatów, wartości odrzucone z powodem, pewność OCR strony.
 
+## Panel webowy
+
+`./start.sh web` (Windows: `start.bat web`, Docker: `docker compose up web`) → http://localhost:8000. Serwer działa lokalnie, na tym samym komputerze — niczego nie trzeba hostować.
+
+- **Dokumenty** — wgranie PDF-ów (przeciągnij i upuść, kilka naraz). Dla każdego: rozpoznany typ, wynik JSON (dokładnie taki plik, jaki zapisuje CLI) do skopiowania lub pobrania, pola z ludzkimi nazwami, pewnością i fragmentem źródłowym, podgląd stron z **podświetlonym źródłem każdej wartości** (także na skanach; powiększanie, przesuwanie myszą).
+- **Typy dokumentów** — lista typów z przełącznikiem „Rozpoznawany / Wyłączony”; podgląd i edycja typu w formularzu (dla urzędnika) albo w YAML (tryb zaawansowany): **Sprawdź** · **Testuj na pliku PDF** (bez zapisywania) · **Zapisz** (do `config/doc_types/`, potok przeładowany od razu; komentarze w pliku zostają). Nowy typ: kreator w 3 krokach (nazwa → frazy rozpoznawania, np. kliknięte w przykładowym PDF → informacje do odczytania).
+- **Słowniki** — podgląd słowników wartości (np. powody odwołania).
+- `ODWOLANIA2JSON_WEB_READONLY=1` wyłącza zapisywanie typów z panelu.
+
 ## LLM
 
 - **Klient:** dowolne API zgodne z OpenAI (`openai` SDK), bez kodu specyficznego dla dostawcy; konfiguracja wyłącznie w `.env` (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). Lokalnie można użyć Ollama / vLLM / llama.cpp.
@@ -106,7 +115,7 @@ input/<sprawa>/<plik>.pdf
 - **Polityka hybrydowa (tryb `hybrid`):** najpierw reguły; LLM uzupełnia tylko pola, które reguły zostawiły puste — nigdy nie nadpisuje wartości z reguł (`extraction.llm_policy: fill_missing` w `config/settings.yaml`; alternatywa `compete` = wygrywa kandydat o wyższej pewności). Wartości z LLM przechodzą tę samą normalizację i weryfikację: wartość tekstowa lub numer, którego nie ma w tekście dokumentu, spada poniżej progu pewności i staje się `null`.
 - **Co dostaje model:** prompt systemowy z `config/prompts/extract_system.md` + instrukcje klasy i słowniki z YAML; tekst dokumentu ze znacznikami stron; JSON Schema wygenerowany z sekcji `output` klasy (structured output; gdy serwer go nie obsługuje — automatycznie `json_object`, potem zwykły prompt). Temperatura 0, ponowienia z informacją o błędzie, cache odpowiedzi w `.cache/llm`.
 - **Klasyfikacja:** gdy reguły są niepewne, a LLM jest dostępny, o klasę pytany jest LLM (zero-shot; lista klas i opisy z YAML; `classification.use_llm_fallback` w `settings.yaml`).
-- **Bez LLM:** tryb `rules` w ogóle nie tworzy klienta LLM (pełny offline). Gdy brak klucza, internetu lub modelu, aplikacja raz wypisuje przyczynę i przetwarza dokumenty w trybie reguł. Wszystkie wyniki w [RAPORT_JAKOSCI.md](RAPORT_JAKOSCI.md) są w trybie reguł.
+- **Bez LLM:** tryb `rules` w ogóle nie tworzy klienta LLM (pełny offline). Gdy brak klucza, internetu lub modelu, aplikacja raz wypisuje przyczynę i przetwarza dokumenty w trybie reguł.
 - **Klucz API:** tylko w pliku `.env` (w `.gitignore`), nigdy w repozytorium; dla jury podajemy go w formularzu zgłoszenia.
 
 ## OCR
@@ -115,7 +124,7 @@ input/<sprawa>/<plik>.pdf
 - Strony renderowane w 300 dpi; rozpoznawanie na wycinkach w pełnej rozdzielczości, linia po linii; linie o pewności < 0.9 czytane ponownie z wycinka o wzmocnionym kontraście; litery spoza polskiego alfabetu (ı ñ š ž à é ç…) zamieniane na polskie/podstawowe; pomijane blade linie przebite z drugiej strony kartki (lustrzane); strona czytana słabo jest próbowana po obrocie o 180° / 90°.
 - Wynik: tekst w kolejności czytania + słowa ze współrzędnymi w punktach PDF (te same co z pdfplumber) — dzięki temu podświetlenia w panelu działają także na skanach.
 - Alternatywy (`OCR_ENGINE`): `easyocr` (opcjonalnie, `requirements-ocr.txt`, torch), `tesseract` (program systemowy + język `pol`; jest w obrazie Docker), `auto` = pierwszy dostępny z kolejności rapidocr → easyocr → tesseract.
-- OCR działa lokalnie (OCR przez API liczyłby się jak LLM). Porównanie konfiguracji: [RAPORT_JAKOSCI.md → Benchmark OCR](RAPORT_JAKOSCI.md#benchmark-ocr).
+- OCR działa lokalnie (OCR przez API liczyłby się jak LLM). Porównanie konfiguracji: `python scripts/ocr_benchmark.py`.
 
 ## Równoległość i wydajność
 
@@ -123,6 +132,21 @@ input/<sprawa>/<plik>.pdf
 - Instancje silnika OCR są współdzielone, a wywołania serializowane blokadą (onnxruntime i tak używa wszystkich rdzeni); PDFium nie jest bezpieczne wątkowo, więc każde wywołanie przechodzi przez wspólną blokadę `PDFIUM_LOCK`.
 - Zapisy cache są atomowe (plik tymczasowy + `os.replace`), więc równoległe wątki i procesy nie widzą niedokończonych wpisów.
 - Panel webowy przetwarza dokumenty w osobnej puli (2 wątki), a podglądy stron i walidację YAML w puli wątków — pętla zdarzeń serwera nie jest blokowana.
+
+## Komendy
+
+`./start.sh` / `start.bat` = `python -m odwolania2json run` na folderach `input/` → `output/`; `./start.sh --help` pokazuje wszystkie komendy.
+
+| Komenda (`python -m odwolania2json …`) | Opis |
+|---|---|
+| `run -i input -o output` | przetwarza wszystkie PDF-y |
+| `classify plik.pdf …` | punkty klasyfikacji dla każdego typu dokumentu |
+| `inspect plik.pdf` | tekst każdej strony (warstwa tekstowa / OCR) |
+| `doc-types` | lista typów dokumentów + walidacja konfiguracji YAML |
+| `schema przelew [--json-schema]` | pusty szablon JSON / schemat przekazywany do LLM |
+| `web` | panel webowy |
+
+Lokalnie zamiast OVHcloud można użyć dowolnego serwera zgodnego z OpenAI, np. Ollama (`ollama pull qwen3.5:9b`, `LLM_BASE_URL=http://localhost:11434/v1`; w Dockerze: `docker compose --profile local-llm up -d ollama`).
 
 ## Docker
 
