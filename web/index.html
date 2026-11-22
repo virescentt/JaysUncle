@@ -1,84 +1,219 @@
 <!doctype html>
-<!-- Interfejs działa bez Node.js i korzysta z lokalnych plików PDF.js. -->
+<!--
+  Panel webowy Odwołania2JSON — czysty HTML/CSS/JS, bez kroku budowania i bez CDN (działa offline, on-premise).
+  Kontrakt API: odwolania2json/api/app.py (docstring na górze). Uruchomienie: ./start.sh web → http://localhost:8000
+-->
 <html lang="pl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Odwołania2JSON</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d4ed8'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // theme chosen by the user (auto / light / dark) applied before the first paint
+    try { const t = localStorage.getItem("o2j-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
 </head>
 <body>
-  <header>
-    <h1>Odwołania2JSON</h1>
-    <p class="muted" id="health">Łączenie z API…</p>
-    <button id="theme-toggle" type="button">Ciemny motyw</button>
-  </header>
+  <a class="skip-link" href="#main">Przejdź do treści</a>
 
-  <main class="workspace">
-    <aside id="documents" class="documents">
-      <div class="panel-heading">
-        <h2>Dokumenty</h2>
-      </div>
-    </aside>
-
-    <section class="details">
-      <section id="pdf-panel" class="pdf-panel card">
-        <div class="panel-heading">
-          <h2>Podgląd PDF</h2>
-        </div>
-
-        <div class="pdf-toolbar">
-          <button id="prev-page" type="button" disabled>Poprzednia</button>
-          <span id="page-label" class="muted">Brak dokumentu</span>
-          <button id="next-page" type="button" disabled>Następna</button>
-          <span class="pdf-zoom-controls" aria-label="Zoom podglądu PDF">
-            <button id="zoom-out" type="button" disabled title="Oddal stronę">−</button>
-            <button id="zoom-reset" type="button" disabled title="Dopasuj stronę">100%</button>
-            <button id="zoom-in" type="button" disabled title="Przybliż stronę">+</button>
+  <header class="topbar">
+    <a class="brand" href="#dokumenty" id="brand-home" title="Przejdź do dokumentów">
+      <span class="logo" aria-hidden="true">{ }</span>
+      <span class="brand-name">Odwołania2JSON</span>
+    </a>
+    <nav class="tabs" role="tablist" aria-label="Widoki panelu">
+      <button class="tab" role="tab" id="tab-btn-docs" aria-controls="tab-docs" aria-selected="true" data-tab="docs" type="button">Dokumenty</button>
+      <button class="tab" role="tab" id="tab-btn-classes" aria-controls="tab-classes" aria-selected="false" data-tab="classes" tabindex="-1" type="button">Typy dokumentów</button>
+    </nav>
+    <div class="menu-wrap" id="dict-menu-wrap">
+      <button class="tab menu-btn" id="dict-menu-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="dict-menu">
+        Słowniki <svg class="chev" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+      <div class="menu" id="dict-menu" hidden>
+        <div class="menu-head">
+          <span>Słowniki</span>
+          <span class="help">
+            <button class="help-q" type="button" aria-describedby="dict-help" aria-label="Co to są słowniki?">?</button>
+            <span class="help-tip" id="dict-help" role="tooltip">Listy wartości, z których system wybiera np. powód odwołania. Tylko do podglądu.</span>
           </span>
         </div>
+        <ul id="dict-list" class="dict-list"></ul>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="health" id="health">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="health-text" role="status" aria-live="polite">Łączenie…</span>
+        <button class="icon-btn small info-btn" id="health-info" type="button" aria-expanded="false" aria-controls="health-pop" title="Szczegóły techniczne">
+          <span aria-hidden="true">i</span><span class="sr-only">Szczegóły techniczne</span>
+        </button>
+        <div class="popover" id="health-pop" role="dialog" aria-label="Szczegóły techniczne" hidden></div>
+      </div>
+      <button class="icon-btn" id="theme-toggle" type="button" title="Motyw: automatyczny" aria-label="Zmień motyw (automatyczny / jasny / ciemny)">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 0 18V3z"/><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+    </div>
+  </header>
 
-        <div id="pdf-pages"></div>
-      </section>
+  <main id="main" tabindex="-1">
+    <!-- ===================================================== DOKUMENTY -->
+    <section id="tab-docs" class="view view-docs" role="tabpanel" aria-labelledby="tab-btn-docs">
+      <input type="file" id="file-input" accept=".pdf,application/pdf" multiple hidden>
 
-      <section class="right-panel">
-        <section id="json-panel" class="card">
-          <h2>Wynik JSON</h2>
-          <p class="muted">Wybierz przetworzony dokument.</p>
+      <!-- stan pusty: duża strefa upuszczania na środku -->
+      <div class="docs-empty" id="docs-empty">
+        <h1 class="page-title">Odczytaj dane z dokumentów</h1>
+        <div id="dropzone" class="dropzone">
+          <svg viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0-4 4m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <p class="dz-title">Przeciągnij pliki PDF tutaj</p>
+          <p class="dz-or">albo</p>
+          <button class="btn primary large" id="pick-files" type="button">Wybierz pliki z dysku</button>
+          <p class="dz-hint" id="drop-hint">Pliki PDF — także skany. Można wybrać kilka naraz.</p>
+        </div>
+
+        <section class="how" aria-labelledby="how-title">
+          <h2 id="how-title">Jak to działa</h2>
+          <ol class="steps">
+            <li><span class="step-n" aria-hidden="true">1</span><div><strong>Dodaj pliki</strong><p>Odwołanie do KIO, pełnomocnictwo, potwierdzenie przelewu — także zeskanowane.</p></div></li>
+            <li><span class="step-n" aria-hidden="true">2</span><div><strong>System rozpoznaje dokument</strong><p>Ustala rodzaj pisma po jego treści i odczytuje najważniejsze dane.</p></div></li>
+            <li><span class="step-n" aria-hidden="true">3</span><div><strong>Sprawdź wynik</strong><p>Kliknij pole, a zobaczysz na stronie, skąd pochodzi wartość.</p></div></li>
+          </ol>
         </section>
+      </div>
 
-        <section id="fields-panel" class="card">
-          <h2>Źródła pól</h2>
+      <!-- po wgraniu: lista + podgląd -->
+      <div class="docs-work" id="docs-work" hidden>
+        <aside class="sidebar" aria-labelledby="doc-list-title">
+          <div class="list-head">
+            <h2 id="doc-list-title">Dokumenty <span class="count" id="doc-count">0</span></h2>
+            <button class="btn small primary" id="add-files" type="button">+ Dodaj pliki</button>
+          </div>
+          <ul id="doc-list" class="doc-list" aria-label="Wgrane dokumenty"></ul>
+          <div class="side-foot">
+            <p class="side-note">Możesz też przeciągnąć kolejne pliki w dowolne miejsce okna.</p>
+            <button class="link-btn" id="clear-docs" type="button" hidden>Wyczyść listę</button>
+          </div>
+        </aside>
+
+        <section class="detail" id="detail" aria-label="Wybrany dokument">
+          <p class="detail-empty" id="detail-empty">Wybierz dokument z listy po lewej.</p>
+          <div class="doc-view" id="doc-view" hidden>
+            <header class="doc-head" id="doc-head"></header>
+            <div class="doc-body">
+              <section class="pages-pane" aria-label="Podgląd stron dokumentu">
+                <div class="pane-toolbar">
+                  <span id="pages-info" class="muted"></span>
+                  <span class="spacer"></span>
+                  <label class="check" for="show-all-boxes"><input type="checkbox" id="show-all-boxes" checked> Pokaż zaznaczenia</label>
+                  <div class="zoom" role="group" aria-label="Powiększenie podglądu">
+                    <button class="icon-btn small bordered" id="zoom-out" type="button" aria-label="Pomniejsz">−</button>
+                    <span id="zoom-val" aria-live="polite">100%</span>
+                    <button class="icon-btn small bordered" id="zoom-in" type="button" aria-label="Powiększ">+</button>
+                  </div>
+                </div>
+                <div class="pages-scroll" id="pages"></div>
+              </section>
+              <section class="data-pane" aria-label="Odczytane dane">
+                <div class="pane-toolbar subtabs" role="tablist" aria-label="Sposób prezentacji wyniku">
+                  <button class="subtab" role="tab" aria-selected="true" aria-controls="json-panel" data-sub="json" id="sub-json" type="button">Wynik JSON</button>
+                  <button class="subtab" role="tab" aria-selected="false" aria-controls="fields-panel" data-sub="fields" id="sub-fields" tabindex="-1" type="button">Pola i źródła</button>
+                  <span class="spacer"></span>
+                  <label class="check" id="only-filled-wrap" for="only-filled"><input type="checkbox" id="only-filled" checked> Tylko znalezione</label>
+                </div>
+                <div class="data-scroll" id="json-panel" role="tabpanel" aria-labelledby="sub-json"></div>
+                <div class="data-scroll" id="fields-panel" role="tabpanel" aria-labelledby="sub-fields" hidden></div>
+              </section>
+            </div>
+          </div>
         </section>
+      </div>
+    </section>
+
+    <!-- ===================================================== TYPY DOKUMENTÓW -->
+    <section id="tab-classes" class="view view-classes" role="tabpanel" aria-labelledby="tab-btn-classes" hidden>
+      <aside class="sidebar" aria-labelledby="class-list-title">
+        <div class="list-head">
+          <div class="list-title">
+            <h2 id="class-list-title">Typy dokumentów</h2>
+            <span class="help">
+              <button class="help-q" type="button" aria-describedby="types-help" aria-label="Co to jest typ dokumentu?">?</button>
+              <span class="help-tip help-tip-start" id="types-help" role="tooltip">Typ dokumentu mówi systemowi, jak rozpoznać dany rodzaj pisma i jakie dane z niego odczytać.</span>
+            </span>
+          </div>
+          <button class="btn small primary" id="ws-new" type="button">+ Nowy typ</button>
+        </div>
+        <ul id="class-list" class="class-list" aria-label="Typy dokumentów"></ul>
+      </aside>
+
+      <section class="workshop" id="workshop" aria-labelledby="ws-title">
+        <div class="ws-inner">
+          <header class="ws-head">
+            <div class="ws-head-text">
+              <div class="ws-title-row">
+                <h2 id="ws-title">Wybierz typ dokumentu z listy</h2>
+                <span id="ws-enabled" class="ws-enabled" hidden></span>
+              </div>
+              <p class="muted" id="ws-file"></p>
+            </div>
+            <div class="ws-head-right">
+              <span class="dirty" id="ws-dirty" hidden>Niezapisane zmiany</span>
+              <div class="ws-modes" id="ws-modes">
+                <button type="button" class="link-btn subtle" id="ws-mode-toggle" data-mode="yaml" aria-pressed="false" hidden>Tryb zaawansowany (YAML)</button>
+                <button type="button" class="link-btn subtle" id="ws-preview" hidden>Podgląd YAML</button>
+              </div>
+            </div>
+          </header>
+
+          <div class="wz" id="ws-wizard" hidden></div>
+          <div class="ws-placeholder" id="ws-placeholder">
+            <p>Wybierz typ dokumentu po lewej, aby go przejrzeć lub zmienić, albo utwórz nowy.</p>
+          </div>
+          <div id="ws-form" class="cf" hidden></div>
+          <div class="editor-wrap" id="ws-editor" hidden>
+            <p class="ws-yaml-note">Tryb zaawansowany: bezpośrednia edycja pliku konfiguracji. Zalecany tylko dla osób znających format YAML.</p>
+            <div class="editor">
+              <pre class="gutter" id="ws-gutter" aria-hidden="true">1</pre>
+              <label for="ws-yaml" class="sr-only">Treść pliku YAML typu dokumentu</label>
+              <textarea id="ws-yaml" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-describedby="ws-keys" disabled></textarea>
+            </div>
+            <p class="muted small" id="ws-keys">Ctrl/⌘+S — zapisz · Ctrl/⌘+Enter — sprawdź · Tab wstawia 2 spacje (Esc, potem Tab — wyjście z pola)</p>
+          </div>
+
+          <div id="ws-msg" class="ws-msg" role="status" aria-live="polite"></div>
+          <div id="ws-result"></div>
+        </div>
+
+        <div class="ws-actions" id="ws-actions" hidden>
+          <div class="ws-actions-inner">
+            <button class="btn" id="ws-check" type="button" disabled>Sprawdź</button>
+            <button class="btn" id="ws-test" type="button" disabled>Testuj na pliku PDF…</button>
+            <input type="file" id="ws-test-file" accept=".pdf,application/pdf" hidden>
+            <span class="spacer"></span>
+            <span class="muted small" id="ws-readonly-note" hidden>Zapisywanie wyłączone przez administratora</span>
+            <button class="btn ghost" id="ws-revert" type="button" disabled>Cofnij zmiany</button>
+            <button class="btn primary" id="ws-save" type="button" disabled>Zapisz</button>
+          </div>
+        </div>
+
+        <dialog id="ws-preview-dlg" class="cf-dialog" aria-labelledby="ws-preview-title">
+          <form method="dialog" class="cf-dialog-head"><strong id="ws-preview-title">Podgląd pliku konfiguracji (YAML)</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
+          <pre id="ws-preview-text"></pre>
+        </dialog>
       </section>
     </section>
   </main>
 
-<section class="card upload-card">
-    <h2>Wgraj dokumenty PDF</h2>
+  <!-- dictionary viewer: outside the tabs, so it opens from any tab (the menu is in the top bar) -->
+  <dialog id="dict-dlg" class="cf-dialog dict-dlg" aria-labelledby="dict-title">
+    <form method="dialog" class="cf-dialog-head"><strong id="dict-title">Słownik</strong><span class="spacer"></span><button class="btn small" type="submit">Zamknij</button></form>
+    <div class="dict-body" id="dict-body"></div>
+  </dialog>
 
-    <div id="dropzone" class="dropzone" tabindex="0">
-      <p>Przeciągnij tutaj pliki PDF</p>
-      <p class="muted">lub</p>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-      <label class="button" for="files">Wybierz pliki</label>
-
-      <input
-        id="files"
-        type="file"
-        accept="application/pdf"
-        multiple
-        hidden
-      >
-    </div>
-
-    <div class="upload-actions">
-      <button id="process" type="button" disabled>Przetwórz PDF-y</button>
-      <p id="status" class="muted" role="status" aria-live="polite">
-        Wybierz pliki, a następnie kliknij „Przetwórz PDF-y”.
-      </p>
-    </div>
-  </section>
-<script type="module" src="/static/app.js"></script>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>

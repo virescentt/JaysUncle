@@ -1,202 +1,253 @@
-"""PDF loading: text layer via pdfplumber; pages without text go to OCR (see ocr.py).
+"""PDF loading: text layer via pdfplumber; scanned pages / garbage text layers go to OCR (see ocr.py).
 
-TODO(ingest):
-  * fix justified-text artefacts (single words split into separate lines) without breaking real line structure,
-  * de-hyphenation of words split across lines ("postępo-\nwania"),
-  * detect mixed pages (text layer present but garbage/too short) → OCR anyway,
-  * keep words with bboxes for OCR pages too (needed for highlighting in the UI).
+Per page:
+  * text layer (pdfplumber extract_text / extract_words — words with bboxes for highlighting in the UI),
+  * OCR instead when the text layer is too short (min_chars_per_page), garbage (min_text_quality: "(cid:12)"
+    glyphs, private-use / replacement characters…) or the page is a scan with only a few characters of text
+    layer on top (image_page_min_chars, e.g. a stamp added by an e-filing system),
+  * de-hyphenation of words split across line ends ("postępo-\\nwania" → "postępowania\\n"); the line
+    structure is kept (the rest of the next line stays on its own line).
+Documents are cached (cache.py): OCR runs once per file + settings. If pdfplumber cannot parse a file or finds
+no page in it (pdfminer gives up on some scanner PDFs with a damaged xref), PDFium reads it instead: its text
+layer where usable, OCR otherwise.
+
+TODO(ingest): justified-text artefacts (single words split into separate lines) without breaking real lines.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import re
 from pathlib import Path
 
 import pdfplumber
+import pypdfium2 as pdfium
 
-from odwolania2json.ingest.ocr import get_ocr_engine
+from odwolania2json.ingest.cache import IngestCache
+from odwolania2json.ingest.ocr import PDFIUM_LOCK, OCREngine, engine_label, get_ocr_engine
 from odwolania2json.models import Document, Page, Word
 from odwolania2json.settings import IngestSettings
 
 log = logging.getLogger(__name__)
 
-
-def clean_extracted_text(text: str) -> str:
-    text = text.replace("\u00ad", "")
-    text = re.sub(r"(?<=\w)-[ \t]*\n[ \t]*(?=\w)", "", text)
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r" *\n *", "\n", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-def needs_ocr(text: str, min_chars: int) -> bool:
-    cleaned = text.strip()
-    if len(cleaned) < min_chars:
-        return True
-    alphanumeric = sum(character.isalnum() for character in cleaned)
-    ratio = alphanumeric / max(1, len(cleaned))
-    return ratio < 0.45 or cleaned.count("\ufffd") >= 3
+# characters that are normal in Polish documents besides letters and digits
+_COMMON_PUNCT = set(".,;:!?()[]{}<>-–—‐‑'\"„”“«»‚‘’/\\|%&@#*+=_~^`§°€$£©®•·…")
+_FILLER_RUN = re.compile(r"([^\w\s])\1{2,}")  # dot leaders "......", rules "-----", "****"
+_CID = re.compile(r"\(cid:\d+\)")
+# word fragment + hyphen at line end, then the first token of the next line (with its punctuation); the
+# lookbehind starts a match only at the beginning of a letter run — without it a long run of letters is retried
+# from every position (quadratic: a 30k-letter line took ~18 s)
+_HYPHEN_BREAK = re.compile(r"(?<![^\W\d_])([^\W\d_]{2,})([-\xad¬])[ \t]*\n[ \t]*([^\W\d_]\S*)[ \t]*")
+_LETTERS = re.compile(r"[^\W\d_]+")
 
 
-def _cache_path(path: Path, settings: IngestSettings) -> Path:
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    config = json.dumps(
-        {"schema": "ingest-v2", **settings.model_dump()},
-        sort_keys=True,
-    )
-    key = hashlib.sha256(f"{digest}:{config}".encode()).hexdigest()
-    cache_dir = Path(__file__).resolve().parents[2] / ".cache" / "ingest"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{key}.json"
+def text_quality(text: str) -> float:
+    """Share of plausible characters (letters, digits, common punctuation) among non-space characters.
+
+    "(cid:NN)" glyph placeholders, replacement/private-use/control characters count as garbage; runs of repeated
+    punctuation (dot leaders, horizontal rules) are ignored. 1.0 for a normal text layer.
+    """
+    cid_chars = sum(len(m) for m in _CID.findall(text))
+    rest = _FILLER_RUN.sub("", _CID.sub("", text))
+    chars = [c for c in rest if not c.isspace()]
+    total = len(chars) + cid_chars
+    if not total:
+        return 0.0
+    good = sum(1 for c in chars if c.isalnum() or c in _COMMON_PUNCT)
+    return good / total
 
 
-def _save_cache(cache_path: Path, document: Document) -> None:
-    cache_path.write_text(
-        json.dumps(
-            {
-                "path": str(document.path),
-                "pages": [
-                    {
-                        "number": page.number,
-                        "text": page.text,
-                        "words": [{"text": word.text, "bbox": word.bbox} for word in page.words],
-                        "width": page.width,
-                        "height": page.height,
-                        "source": page.source,
-                        "ocr_engine": page.ocr_engine,
-                        "ocr_confidence": getattr(page, "ocr_confidence", None),
-                    }
-                    for page in document.pages
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+def dehyphenate(text: str, context: str | None = None) -> str:
+    """Join words split across line ends when both parts are lowercase letters; keep the line structure.
+
+    'prowadzonego postępo-\\nwania, o udzielenie' → 'prowadzonego postępowania,\\no udzielenie' (the first token of
+    the next line moves up, the rest of that line stays on its own line).
+    Not joined: 'Bielsko-\\nBiała' (capital), '5-\\ndniowy' (digit), 'e-\\nmail' (one-letter head), '-\\nlista'.
+    A compound that is written with the hyphen elsewhere in `context` (the whole document) and never without it
+    keeps the hyphen: 'architektoniczno-\\nbudowlany' → 'architektoniczno-budowlany'.
+    """
+    if "\n" not in text:
+        return text.replace("\xad", "")
+    ctx = (context if context is not None else text).casefold()
+
+    def join(m: re.Match) -> str:
+        head, mark, token = m.group(1), m.group(2), m.group(3)
+        word = _LETTERS.match(token).group(0)
+        if not (head[-1].islower() and word[0].islower()):
+            return m.group(0)
+        hyphenated, joined = f"{head}-{word}".casefold(), f"{head}{word}".casefold()
+        keep = mark == "-" and hyphenated in ctx and joined not in ctx
+        out = head + ("-" if keep else "") + token
+        rest_of_line_empty = m.end() >= len(m.string) or m.string[m.end()] == "\n"
+        return out if rest_of_line_empty else out + "\n"
+
+    for _ in range(3):  # a one-word line that is itself hyphenated needs another pass
+        new = _HYPHEN_BREAK.sub(join, text)
+        if new == text:
+            break
+        text = new
+    return text.replace("\xad", "")
 
 
-def _load_cache(cache_path: Path) -> Document | None:
-    if not cache_path.exists():
-        return None
+def _image_coverage(page) -> float:
+    """Largest share of the page area covered by a single image (pdfplumber page)."""
+    area = float(page.width * page.height) or 1.0
+    best = 0.0
+    for im in page.images:
+        w = max(0.0, min(float(im["x1"]), float(page.width)) - max(float(im["x0"]), 0.0))
+        h = max(0.0, min(float(im["bottom"]), float(page.height)) - max(float(im["top"]), 0.0))
+        best = max(best, w * h / area)
+    return best
+
+
+def ocr_reason(text: str, page, settings: IngestSettings) -> str | None:
+    """Why the page should be OCR-ed instead of using its text layer (None = keep the text layer)."""
+    n = len(text.strip())
+    if n < settings.min_chars_per_page:
+        return "short"
+    if text_quality(text) < settings.min_text_quality:
+        return "garbage"
+    if n < settings.image_page_min_chars and page is not None and _image_coverage(page) >= 0.5:
+        return "image"
+    return None
+
+
+class _LazyOCR:
+    def __init__(self, settings: IngestSettings):
+        self.settings = settings
+        self._engine: OCREngine | None = None
+        self._tried = False
+
+    def get(self) -> OCREngine | None:
+        if not self._tried:
+            self._engine, self._tried = get_ocr_engine(self.settings), True
+        return self._engine
+
+
+def _ocr_into(page: Page, ocr: _LazyOCR, path: Path, index: int, settings: IngestSettings) -> bool:
+    """OCR the page in place. False when no engine is available or OCR failed (page keeps its text layer)."""
+    engine = ocr.get()
+    if engine is None:
+        return False
+    text, words = page.text, page.words
     try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
-        pages = []
-        for item in data["pages"]:
-            page = Page(
-                number=item["number"],
-                text=item["text"],
-                words=[Word(word["text"], tuple(word["bbox"])) for word in item["words"]],
-                width=item["width"],
-                height=item["height"],
-                source=item["source"],
-                ocr_engine=item["ocr_engine"],
-            )
-            page.ocr_confidence = item.get("ocr_confidence")
+        engine.ocr_page(path, index, page, settings)
+        return True
+    except Exception as e:  # noqa: BLE001 — one bad page must not stop the document
+        log.warning("OCR failed for %s page %d: %s", path.name, index + 1, e)
+        page.text, page.words, page.source = text, words, "text"
+        return False
+
+
+def _read_with_pdfplumber(path: Path, settings: IngestSettings, ocr: _LazyOCR) -> tuple[list[Page], bool]:
+    pages: list[Page] = []
+    complete = True
+    with pdfplumber.open(path) as pdf:
+        for i, p in enumerate(pdf.pages[: settings.max_pages]):
+            try:
+                text = p.extract_text() or ""
+                words = [Word(w["text"], (w["x0"], w["top"], w["x1"], w["bottom"])) for w in p.extract_words()]
+                reason = ocr_reason(text, p, settings)
+            except Exception as e:  # noqa: BLE001 — unreadable text layer of one page → OCR that page
+                log.warning("Text layer of %s page %d unreadable (%s) — OCR", path.name, i + 1, e)
+                text, words, reason = "", [], "error"
+            page = Page(number=i + 1, text=text, words=words, width=float(p.width), height=float(p.height))
+            if reason:
+                if _ocr_into(page, ocr, path, i, settings):
+                    log.debug("%s p.%d: OCR (%s)", path.name, i + 1, reason)
+                else:
+                    complete = False
+                    if not text.strip():
+                        page.source = "empty"
             pages.append(page)
-        return Document(path=Path(data["path"]), pages=pages)
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        cache_path.unlink(missing_ok=True)
-        return None
+    return pages, complete
+
+
+def _pdfium_text(page) -> str:
+    """Text layer of a PDFium page ("" when it cannot be read)."""
+    try:
+        textpage = page.get_textpage()
+        try:
+            text = textpage.get_text_range()
+        finally:
+            textpage.close()
+    except Exception:  # noqa: BLE001 — no usable text layer → OCR
+        return ""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _read_with_pdfium(path: Path, settings: IngestSettings, ocr: _LazyOCR) -> tuple[list[Page], bool]:
+    """Fallback for files pdfplumber cannot read (exception, or no pages found — e.g. scanner PDFs with a damaged
+    xref that PDFium still opens): page sizes and text layer from PDFium (no word boxes), OCR where the text
+    layer is missing or garbage."""
+    infos: list[tuple[float, float, str]] = []
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
+        try:
+            for i in range(min(len(pdf), settings.max_pages)):
+                page = pdf[i]
+                try:
+                    w, h = page.get_size()
+                    infos.append((float(w), float(h), _pdfium_text(page)))
+                finally:
+                    page.close()
+        finally:
+            pdf.close()
+    pages, complete = [], True
+    for i, (w, h, text) in enumerate(infos):
+        page = Page(number=i + 1, text=text, width=w, height=h)
+        if reason := ocr_reason(text, None, settings):
+            if _ocr_into(page, ocr, path, i, settings):
+                log.debug("%s p.%d: OCR (%s)", path.name, i + 1, reason)
+            else:
+                complete = False
+                if not text.strip():
+                    page.source = "empty"
+        pages.append(page)
+    return pages, complete
+
+
+def read_pages(path: Path, settings: IngestSettings) -> tuple[list[Page], bool]:
+    """Pages of the PDF (no cache). The flag is False when some page needed OCR that was not available."""
+    ocr = _LazyOCR(settings)
+    error: Exception | None = None
+    try:
+        pages, complete = _read_with_pdfplumber(path, settings, ocr)
+    except Exception as e:  # noqa: BLE001 — broken/unusual PDF: read it with PDFium (text layer or OCR)
+        log.warning("pdfplumber failed on %s (%s) — reading it with PDFium", path.name, e)
+        pages, complete, error = [], True, e
+    if not pages:
+        # pdfminer finds no page at all in some scanner PDFs (damaged xref / page tree) that PDFium opens fine
+        try:
+            pages, complete = _read_with_pdfium(path, settings, ocr)
+        except Exception as e:  # noqa: BLE001
+            if error is not None:
+                raise
+            log.warning("PDFium cannot read %s either (%s)", path.name, e)
+    context = "\n".join(p.text for p in pages)
+    for page in pages:
+        page.text = dehyphenate(page.text, context)
+    return pages, complete
 
 
 def load_document(path: Path, settings: IngestSettings | None = None) -> Document:
+    """PDF → Document, transparently cached (settings.cache_dir)."""
     settings = settings or IngestSettings()
-    cache_path = _cache_path(path, settings)
-    cached = _load_cache(cache_path)
-    if cached is not None:
-        return cached
-
-    pages: list[Page] = []
-    ocr = None
-    with pdfplumber.open(path) as pdf:
-        for i, p in enumerate(pdf.pages[: settings.max_pages]):
-            text = clean_extracted_text(p.extract_text() or "")
-            words = [Word(w["text"], (w["x0"], w["top"], w["x1"], w["bottom"])) for w in p.extract_words()]
-            page = Page(number=i + 1, text=text, words=words, width=float(p.width), height=float(p.height))
-            if needs_ocr(text, settings.min_chars_per_page):
-                ocr = ocr or get_ocr_engine(settings)
-                if ocr is not None:
-                    page = ocr.ocr_page(path, i, page, settings)
-                else:
-                    page.source = "empty"
-            pages.append(page)
-    document = Document(path=Path(path), pages=pages)
-    _save_cache(cache_path, document)
-    return document
-
-
-def document_to_json(document: Document) -> dict:
-    """Serialize an ingested PDF for direct PDF → JSON conversion."""
-    return {
-        "source": str(document.path),
-        "pages": len(document.pages),
-        "scanned": document.is_scanned,
-        "text": document.text,
-        "pages_detail": [
-            {
-                "number": page.number,
-                "text": page.text,
-                "source": page.source,
-                "ocr_engine": page.ocr_engine,
-                "ocr_confidence": getattr(page, "ocr_confidence", None),
-                "words": [
-                    {
-                        "text": word.text,
-                        "bbox": list(word.bbox),
-                    }
-                    for word in page.words
-                ],
-            }
-            for page in document.pages
-        ],
-    }
-
-
-def pdf_to_json(
-    pdf_path: str | Path,
-    output_path: str | Path | None = None,
-    settings: IngestSettings | None = None,
-) -> Path:
-    """Convert one PDF to JSON beside the PDF or at an explicit output path."""
-    pdf_path = Path(pdf_path)
-    if not pdf_path.is_file():
-        raise FileNotFoundError(pdf_path)
-    if pdf_path.suffix.lower() != ".pdf":
-        raise ValueError(f"Expected a PDF file: {pdf_path}")
-
-    json_path = Path(output_path) if output_path is not None else pdf_path.with_suffix(".json")
-    if json_path.suffix.lower() != ".json":
-        json_path = json_path / pdf_path.with_suffix(".json").name
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-
-    document = load_document(pdf_path, settings)
-    json_path.write_text(
-        json.dumps(document_to_json(document), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return json_path
-
-
-def pdf_folder_to_json(
-    input_dir: str | Path,
-    output_dir: str | Path,
-    settings: IngestSettings | None = None,
-) -> list[Path]:
-    """Convert all PDFs recursively while mirroring the folder structure."""
-    input_dir = Path(input_dir)
-    output_dir = Path(output_dir)
-    if not input_dir.is_dir():
-        raise NotADirectoryError(input_dir)
-
-    results: list[Path] = []
-    for pdf_path in sorted(input_dir.rglob("*")):
-        if not pdf_path.is_file() or pdf_path.suffix.lower() != ".pdf":
-            continue
-        relative = pdf_path.relative_to(input_dir)
-        json_path = output_dir / relative.with_suffix(".json")
-        results.append(pdf_to_json(pdf_path, json_path, settings))
-    return results
+    path = Path(path)
+    cache = IngestCache.from_settings(settings)
+    key = label = None
+    if cache is not None:
+        try:
+            label = engine_label(settings)
+            key = cache.key(path, settings, label)
+            if (pages := cache.get(key)) is not None:
+                return Document(path=path, pages=pages)
+        except OSError as e:
+            log.warning("Ingest cache unavailable for %s: %s", path.name, e)
+            key = None
+    pages, complete = read_pages(path, settings)
+    # cache only complete results produced by the expected engine (a failed model download falls back to another)
+    engines = {p.ocr_engine for p in pages if p.source == "ocr"}
+    if cache is not None and key is not None and complete and engines <= {label}:
+        cache.put(key, pages, path)
+    return Document(path=path, pages=pages)

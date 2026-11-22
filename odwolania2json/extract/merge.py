@@ -91,9 +91,7 @@ def merge(
         if generic(c.path) in leaf_specs:
             by_path[c.path].append(c)
 
-    chosen: dict[str, FieldResult] = {}
-    for path, cands in by_path.items():
-        fspec = leaf_specs[generic(path)]
+    def select(path: str, cands: list[Candidate], fspec: FieldSpec) -> FieldResult:
         issues: list[str] = []
         scored: list[tuple[float, int, Candidate, object]] = []
         for c in cands:
@@ -106,8 +104,7 @@ def merge(
             method_rank = _rank(c.method, settings.method_priority)
             scored.append((conf, -method_rank, c, raw))
         if not scored:
-            chosen[path] = FieldResult(path, None, candidates=cands, issues=issues)
-            continue
+            return FieldResult(path, None, candidates=cands, issues=issues)
         # agreement bonus: several distinct methods produced the same normalized value
         values = defaultdict(set)
         for _, _, c, _ in scored:
@@ -120,7 +117,7 @@ def merge(
         keep = conf >= settings.min_confidence
         if not keep:
             issues.append(f"best confidence {conf:.2f} < {settings.min_confidence} → null")
-        chosen[path] = FieldResult(
+        return FieldResult(
             path=path,
             value=best.value if keep else None,
             raw_value=raw,
@@ -130,6 +127,23 @@ def merge(
             candidates=cands,
             issues=issues,
         )
+
+    chosen: dict[str, FieldResult] = {}
+    for path, cands in by_path.items():
+        fspec = leaf_specs[generic(path)]
+        if settings.llm_policy != "fill_missing":
+            chosen[path] = select(path, cands, fspec)
+            continue
+        # fill_missing: rules decide; the LLM only fills fields the rules left empty (never overrides them)
+        primary = [c for c in cands if not c.method.startswith("llm")]
+        secondary = [c for c in cands if c.method.startswith("llm")]
+        fr = select(path, primary, fspec) if primary else None
+        if (fr is None or fr.value is None) and secondary:
+            fr_llm = select(path, secondary, fspec)
+            fr_llm.issues = (fr.issues if fr else []) + fr_llm.issues
+            fr = fr_llm
+        fr.candidates = cands
+        chosen[path] = fr
 
     values = {p: fr.value for p, fr in chosen.items() if fr.value is not None}
     data = spec.build_output(values)
@@ -142,7 +156,9 @@ def merge(
             parent = path.rsplit(".", 1)[0] if "." in path else ""
             src_path = f"{parent}.{fspec.derived_from}" if parent else fspec.derived_from
             src_val = get(data, src_path)
-            entry = registry.dictionaries[fspec.dictionary].get(src_val) if fspec.dictionary else None
+            # a missing dictionary is a config error (Registry.check reports it): null, not a lost document
+            dictionary = registry.dictionaries.get(fspec.dictionary) if fspec.dictionary else None
+            entry = dictionary.get(src_val) if dictionary is not None else None
             val = getattr(entry, fspec.derived_attr, None) if entry else None
             set_value(data, path, val)
             src_conf = chosen[src_path].confidence if src_path in chosen else 0.0

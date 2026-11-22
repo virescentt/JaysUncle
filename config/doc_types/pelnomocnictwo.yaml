@@ -39,6 +39,12 @@ output:
     type: array
     min_items: 1
     description: Mocodawca — podmiot udzielający pełnomocnictwa; może być więcej niż 1 (konsorcjum wspólnie).
+    scope: head
+    section:          # konsorcjum: „Wykonawcy wspólnie ubiegający się … (Konsorcjum): 1) …; 2) …”
+      start: 'Wykonawc\w*\s+wspólnie\s+ubiegając\w*[^:]{0,80}:|Konsorcj\w*\s*\)?\s*:'
+      end: '\(\s*dalej|niniejszym|udziela\w*\s+pełnomocnictw'
+      optional: true  # brak konsorcjum → cały dokument to jeden mocodawca
+    item_split: '(?<![\w.])\d\s*\)\s+(?=(?-i:[A-ZŁŚŻŹĆŃÓ]))'   # „1) Torvex …; 2) Hydromel …” (wielka litera)
     items:
       type: object
       properties:
@@ -48,23 +54,35 @@ output:
             imie_nazwisko:
               type: string
               description: Imię i nazwisko mocodawcy, jeśli jest osobą fizyczną. Dla osoby prawnej null.
+              patterns:   # tylko przedsiębiorca — osoba fizyczna: „Ja, niżej podpisany Jan Kowalski, prowadzący działalność …”
+                - 'niżej\s+podpisan\w*(?:\s*\(a\)|/a)?\s*,?\s+(?P<value>[^\W\d_][^,\n(]{2,60}?)\s*,\s*prowadząc\w*'
               normalize: [person_name]
             krs:
               type: string
               description: Numer KRS mocodawcy będącego osobą prawną (10 cyfr).
-              patterns: ['KRS[:\s]*(?P<value>\d{10})']
+              patterns: ['KRS[\s:;.]*(?:nr\s*)?(?P<value>\d{10})(?!\d)']
               normalize: [digits_only]
               validate: [krs]
               ground: digits
             nazwa:
               type: string
               description: Pełna nazwa mocodawcy (firma), dokładnie jak w dokumencie.
+              patterns:
+                - '(?<![\w.])\d\s*\)\s+(?P<value>(?-i:[A-ZŁŚŻŹĆŃÓ])[^,(;]{2,150}?)\s*,?\s*(?:ul\.|al\.|pl\.|z\s+siedzib)'   # element konsorcjum „1) X sp. z o.o., ul. …”
+                - 'pod\s+firmą\s*:?\s*["„]?(?P<value>[^,(\n"”]+(?:\n[^,(\n"”]+)?)\s*[,(]'          # przedsiębiorca (CEIDG)
+                - 'Mocodawcą\s+jest\s+(?P<value>[^,\n]{3,150}?)\s*,'
+                - 'Działając\s+w\s+imieniu\s+(?P<value>[^(\n]{3,150}(?:\n[^(\n]{1,80})?)\s*\(\s*dalej'
+                - 'do\s+reprezentacji\s+(?P<value>[^(]{3,150}?)\s*\(\s*(?:KRS|NIP|dalej)'
+                - '^\s*(?:\d\s*\)\s*)?(?P<value>[^\n,(]{3,150}?),?\s+z\s+siedzib\w*'                  # „X sp. z o.o. z siedzibą w …”
+                - '^\s*(?:\d\s*\)\s*)?(?P<value>[^\n,(]{3,150}?),\s*(?:ul\.|al\.|pl\.)\s'            # „X S.A., ul. …, KRS …”
+                - '^\s*Mocodawca[ \t]+(?!\s*(?:ustanawia|udziela|upoważnia|jest|pełnomocni))(?P<value>[^\n:]{3,120})$'   # tabela: „Mocodawca  X S.A.”
+                - '^\s*MOCODAWCA\s+PEŁNOMOCNIK\s*\n\s*(?P<value>[^\n]{3,120}?)\s+(?:r\.\s*pr\.|adw\.|radca|adwokat)'   # dwie kolumny
               normalize: [strip_quotes, collapse_whitespace]
               ground: fuzzy
             nip:
               type: string
               description: Numer NIP mocodawcy (10 cyfr).
-              patterns: ['NIP[:\s]*(?P<value>\d{3}[- ]?\d{3}[- ]?\d{2}[- ]?\d{2}|\d{10})']
+              patterns: ['NIP[\s:;.]*(?:PL)?\s*(?P<value>\d(?:[ -]?\d){9})(?![\d-])']
               normalize: [digits_only]
               validate: [nip]
               ground: digits
@@ -72,16 +90,34 @@ output:
               type: string
               enum: [osoba_prawna, osoba_fizyczna]
               description: Typ mocodawcy.
+              strategy: entity_type   # CEIDG / „prowadzący działalność gospodarczą” → osoba fizyczna
+              params:
+                natural: ['prowadząc\w*(?:/a)?\s+działalnoś\w*\s+gospodarcz\w*', '\bCEIDG\b', 'Centraln\w+\s+Ewidencj\w+']
+                legal: ['\bKRS\b', 'sp\.\s*z\s*o\.\s*o', '\bS\.\s*A\b', 'spółk\w+', '\bsp\.\s*[jkp]\b', 'akcyjn\w+']
+                natural_value: osoba_fizyczna
+                legal_value: osoba_prawna
         podpisujacy:
           type: array
           min_items: 1
           description: Osoby podpisujące w imieniu mocodawcy.
+          strategy: signatories   # „reprezentowana przez: …”, podpis elektroniczny, blok podpisów (bez „Pełnomocnictwo przyjmuję”)
+          params:
+            inline: ['reprezentowan\w*\s*przez\s*:?']
+            inline_until: ['\(\s*dalej', 'niniejszym', 'udziela\w*', '\bKRS\b', '\bNIP\b', '\bREGON\b', '\bul\.', '\bosoby\s+podpisane']
+            esign: ['Dokument\s+podpisany\s+przez\s*:?\s*']
+            # wzorce w params nie rozróżniają wielkości liter — „Za Firma” (podpis) vs „za Mocodawcę we wszystkich
+            # czynnościach” (zawinięta linia treści) rozróżnia dopiero (?-i:…)
+            block_start: ['^\s*Za\s+Mocodawc\w*\s*:?[ \t]*$', '^\s*W\s+imieniu\b[^\n]*:\s*$', '^\s*Mocodawca\s*:', '^\s*(?-i:Za|ZA)\s+(?-i:[A-ZŁŚŻŹĆŃÓ])[^\n]*$', '^\s*[.…_]{8,}']
+            block_end: ['^\s*Pełnomocnictwo\s+przyjmuj\w*', '^\s*Przyjmuj\w*\s+pełnomocnictw\w*']
+            group_start: ['^\s*W\s+imieniu\b[^\n]*:\s*$', '^\s*(?-i:Za|ZA)\s+(?!Mocodawc)(?-i:[A-ZŁŚŻŹĆŃÓ])[^\n]*$']
+            block_skip: ['\bsp\.\s*z\s*o\.?\s*o', '\bS\.\s*A\b', 'spółk', '\bsp\.\s*[jkp]\b', '\bul\.', '\bNIP\b', 'www\.', 'Kancelari', '\d{2}-\d{3}']
           items:
             type: object
             properties:
               imie_nazwisko:
                 type: string
                 description: Imię i nazwisko osoby podpisującej, w mianowniku.
+                strategy: item_text
                 normalize: [person_name]
                 ground: fuzzy
 
@@ -89,18 +125,30 @@ output:
     type: array
     min_items: 1
     description: Osoby otrzymujące pełnomocnictwo.
+    scope: head
+    strategy: persons   # lista osób po „udziela pełnomocnictwa” / „ustanawiam pełnomocnikiem” / „Pełnomocnicy”
+    params:
+      after:
+        - 'udziela\w*\s+(?:niniejszym\s+)?(?:dalszego\s+)?pełnomocnictw\w*\s*:?'
+        - 'ustanawia\w*\s+(?:\w+\s+)?pełnomocnik\w*\s*:?'
+        - 'upoważnia\w*\s*:?'
+        - '^\s*Pełnomocni(?:cy|k)\b\s*:?'
+        - 'Pełnomocni(?:cy|k)[ \t]*$'
+      until: ['do\s+reprezentowania', 'do\s+(?:działania|występowania|zastępowania)', '^\s*Zamawiając', '^\s*Postępowanie', '^\s*§', '(?<!adw)(?<!\bpr)(?<!mec)(?<!\br)(?<!apl)\.[ \t]*$', '^\s*Pełnomocnictwo\b', '^\s*Zakres']
+      max_chars: 600
     items:
       type: object
       properties:
         imie_nazwisko:
           type: string
           description: Imię i nazwisko pełnomocnika w mianowniku, bez tytułów zawodowych.
+          strategy: item_text
           normalize: [person_name]
           ground: fuzzy
         pesel:
           type: string
           description: PESEL pełnomocnika (11 cyfr), tylko jeśli podany.
-          patterns: ['PESEL[:\s]*(?P<value>\d{11})']
+          patterns: ['PESEL[\s:;.]*(?P<value>\d{11})(?!\d)']
           normalize: [digits_only]
           validate: [pesel]
           ground: digits

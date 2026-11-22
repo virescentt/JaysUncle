@@ -2,24 +2,58 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from odwolania2json import CONFIG_DIR, PROJECT_ROOT
 
+OCREngineName = Literal["auto", "rapidocr", "easyocr", "tesseract", "none"]
+
 
 class IngestSettings(BaseModel):
-    min_chars_per_page: int = 40
-    ocr_engine: Literal["auto", "tesseract", "rapidocr", "none"] = "auto"
-    ocr_dpi: int = 300
-    ocr_lang: str = "pol"
+    """PDF → pages (odwolania2json/ingest): text layer via pdfplumber, OCR for scans / garbage text layers."""
+
+    model_config = ConfigDict(validate_assignment=True)  # Settings.load() assigns env values (OCR_ENGINE)
+
+    min_chars_per_page: int = 40  # fewer characters in the text layer → the page is a scan → OCR
+    min_text_quality: float = 0.5  # min share of letters/digits in a text layer; lower ("(cid:..)", junk) → OCR
+    image_page_min_chars: int = 200  # page covered by an image (scan) with less text layer than this → OCR
+    ocr_engine: OCREngineName = "auto"
+    ocr_model: str = "PP-OCRv6-small"  # rapidocr: PP-OCRv6-tiny | PP-OCRv6-small | PP-OCRv6-medium | PP-OCRv5-latin
+    ocr_dpi: int = 300  # page rendering resolution for OCR
+    ocr_preprocess: list[str] = Field(default_factory=list)  # grayscale | autocontrast | binarize | denoise | deskew
+    ocr_det_side: int = 2000  # rapidocr: longest image side (px) for text detection (0 = library default)
+    ocr_max_side: int = 0  # rapidocr: downscale the page to this longest side before det+rec (0 = never)
+    ocr_use_cls: bool = False  # rapidocr: per-line 0/180° classifier (flips bleed-through lines by mistake)
+    ocr_auto_rotate: bool = True  # page read badly → also read turned: 180° (horizontal lines) or 90/270° (vertical)
+    ocr_min_score: float = 0.5  # recognized text with lower confidence is dropped
+    ocr_retry_score: float = 0.9  # rapidocr: lines read with lower confidence are re-read from enhanced crops (0=off)
+    ocr_rec_batch: int = 1  # rapidocr: lines per recognition batch (padding to the longest line drops spaces)
+    ocr_drop_mirrored: bool = True  # rapidocr: drop faint lines that read better mirrored (bleed-through)
+    ocr_polish_letters: bool = True  # OCR letters absent from Polish (ı ñ š ž à é ç…) → Polish / base letter
+    ocr_lang: str = "pol"  # tesseract languages ("pol+eng"); easyocr: pol → pl
     max_pages: int = 20
     tesseract_cmd: str | None = None
+    cache_dir: str | None = ".cache/ingest"  # cache of extracted/OCR-ed pages (None = off)
+
+    @field_validator("ocr_engine", mode="before")
+    @classmethod
+    def _engine_name(cls, value: object) -> object:
+        """'RapidOCR ' → 'rapidocr'; an unknown name → 'auto' with a warning (it used to switch OCR off silently)."""
+        if not isinstance(value, str):
+            return value
+        name = value.strip().lower()
+        if name not in get_args(OCREngineName):
+            logging.getLogger(__name__).warning("Unknown OCR engine %r — using 'auto'", value)
+            return "auto"
+        return name
 
 
 class ClassificationSettings(BaseModel):
@@ -30,6 +64,8 @@ class ClassificationSettings(BaseModel):
 
 class ExtractionSettings(BaseModel):
     mode: Literal["rules", "llm", "hybrid"] = "hybrid"
+    # hybrid: fill_missing = the LLM only fills fields the rules left empty; compete = best confidence wins
+    llm_policy: Literal["fill_missing", "compete"] = "fill_missing"
     min_confidence: float = 0.5
     method_priority: list[str] = Field(default_factory=lambda: ["rules", "llm", "derived"])
 
@@ -44,10 +80,18 @@ class LLMSettings(BaseModel):
     structured_output: Literal["json_schema", "json_object", "prompt"] = "json_schema"
     max_retries: int = 2
     cache_dir: str = ".cache/llm"
+    prompt_suffix: str = ""  # appended to every system prompt, e.g. "/no_think" for Qwen3 models
+    # extra JSON fields sent with every request, provider-specific — env LLM_EXTRA_BODY (JSON), e.g. thinking off:
+    # OVHcloud / Ollama {"reasoning_effort": "none"}, own vLLM {"chat_template_kwargs": {"enable_thinking": false}}
+    extra_body: dict = Field(default_factory=dict)
 
     @property
     def enabled(self) -> bool:
         return bool(self.base_url and self.model)
+
+
+class PipelineSettings(BaseModel):
+    workers: int = 4  # documents processed in parallel (LLM calls are I/O-bound)
 
 
 class OutputSettings(BaseModel):
@@ -64,6 +108,7 @@ class Settings(BaseModel):
     extraction: ExtractionSettings = ExtractionSettings()
     llm: LLMSettings = LLMSettings()
     output: OutputSettings = OutputSettings()
+    pipeline: PipelineSettings = PipelineSettings()
     config_dir: Path = CONFIG_DIR
 
     @classmethod
@@ -84,4 +129,10 @@ class Settings(BaseModel):
         s.llm.base_url = env("LLM_BASE_URL") or s.llm.base_url
         s.llm.api_key = env("LLM_API_KEY") or s.llm.api_key
         s.llm.model = env("LLM_MODEL") or s.llm.model
+        if (v := env("LLM_PROMPT_SUFFIX")) is not None:
+            s.llm.prompt_suffix = v
+        if v := env("LLM_EXTRA_BODY"):
+            s.llm.extra_body = json.loads(v)
+        if v := env("PIPELINE_WORKERS"):
+            s.pipeline.workers = max(1, int(v))
         return s

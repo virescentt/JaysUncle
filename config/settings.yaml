@@ -2,10 +2,24 @@
 
 ingest:
   min_chars_per_page: 40      # mniej znaków w warstwie tekstowej → strona traktowana jako skan → OCR
-  ocr_engine: auto            # auto | tesseract | rapidocr | none   (auto: tesseract, a gdy brak — rapidocr)
-  ocr_dpi: 300
-  ocr_lang: pol
+  min_text_quality: 0.5       # udział liter/cyfr w warstwie tekstowej; mniej („(cid:12)”, śmieci) → OCR
+  image_page_min_chars: 200   # strona-obraz (skan) z mniejszą liczbą znaków warstwy tekstowej (np. pieczęć) → OCR
+  # OCR (skany). Wyniki porównania silników: python scripts/ocr_benchmark.py
+  ocr_engine: auto            # auto | rapidocr | easyocr | tesseract | none   (auto: rapidocr → easyocr → tesseract)
+  ocr_model: PP-OCRv6-small   # rapidocr: PP-OCRv6-small (w paczce pip, bez pobierania) | PP-OCRv6-tiny | PP-OCRv6-medium | PP-OCRv5-latin
+  ocr_dpi: 300                # rozdzielczość renderowania strony do OCR
+  ocr_preprocess: []          # kolejne kroki: grayscale | autocontrast | binarize | denoise | deskew
+  ocr_det_side: 2000          # rapidocr: dłuższy bok obrazu do detekcji tekstu (rozpoznawanie na pełnej rozdzielczości)
+  ocr_use_cls: false          # rapidocr: klasyfikator orientacji pojedynczych linii — myli się na przebitkach tekstu
+  ocr_auto_rotate: true       # strona odczytana słabo → OCR po obrocie: linie poziome → 180° (do góry nogami), pionowe → 90/270° (bokiem)
+  ocr_min_score: 0.5          # tekst rozpoznany z mniejszą pewnością jest pomijany
+  ocr_retry_score: 0.9        # rapidocr: linie o niższej pewności czytane ponownie z wycinka o wzmocnionym kontraście (0 = wył.)
+  ocr_rec_batch: 1            # rapidocr: linie rozpoznawane pojedynczo — w paczce (np. 6) model gubi spacje i działa ~2× wolniej
+  ocr_drop_mirrored: true     # rapidocr: pomija blade linie, które czytają się lepiej w lustrzanym odbiciu (przebitka z drugiej strony kartki)
+  ocr_polish_letters: true    # litery spoza alfabetu polskiego z OCR (ı ñ š ž à é ç…) → polska / podstawowa litera
+  ocr_lang: pol               # tesseract (np. pol+eng); easyocr: pol → pl
   max_pages: 20               # ile stron maksymalnie czytamy z jednego PDF
+  cache_dir: .cache/ingest    # cache tekstu/OCR stron (null = wyłączony)
 
 classification:
   head_chars: 1500            # zakres „nagłówka” dla sygnałów ze scope: head
@@ -13,17 +27,19 @@ classification:
   use_llm_fallback: true      # niepewna klasyfikacja → zapytaj LLM (jeśli skonfigurowany)
 
 extraction:
-  mode: hybrid                # rules | llm | hybrid
+  mode: rules                 # rules | llm | hybrid — domyślnie reguły: F1 0.969 na 30 skanach vs hybryda z Qwen3.5-9B 0.955 (docs/RAPORT_JAKOSCI.md)
+  llm_policy: fill_missing    # hybrid: LLM uzupełnia tylko pola puste po regułach (fill_missing) albo konkuruje (compete)
   min_confidence: 0.5         # pewność poniżej progu → null (precyzja ważniejsza niż zgadywanie)
   method_priority: [rules, llm, derived]   # przy remisie pewności
 
 llm:
   temperature: 0.0
-  max_tokens: 2500
+  max_tokens: 8000                 # modele rozumujące (Olala, Qwen3.x) zużywają tokeny na „myślenie”
   timeout_s: 120
   structured_output: json_schema   # json_schema | json_object | prompt  (zależnie od możliwości serwera)
   max_retries: 2
   cache_dir: .cache/llm            # cache odpowiedzi — szybkie powtórne przebiegi ewaluacji
+  prompt_suffix: ""                # dopisywane do promptu systemowego, np. "/no_think" dla modeli Qwen3
 
 output:
   write_traces: true
@@ -32,3 +48,6 @@ output:
   #   empty_file = plik 0 bajtów · empty_object = "{}" · none = brak pliku   (do potwierdzenia z UZP)
   unknown_output: empty_file
   indent: 2
+
+pipeline:
+  workers: 4                  # ile dokumentów przetwarzamy równolegle (wywołania LLM czekają na sieć)

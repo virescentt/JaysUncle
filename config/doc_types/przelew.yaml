@@ -47,36 +47,61 @@ output:
       data_operacji:
         type: date
         description: Data wykonania/realizacji przelewu (ISO YYYY-MM-DD).
-        labels: [Data operacji, Data transakcji, Data wykonania, Data realizacji, Data księgowania]
+        labels: [Data operacji, Data transakcji, Data wykonania, Zlecona data wykonania, Data realizacji, Data księgowania, Data i godzina operacji, Data i godzina transakcji]
+        patterns:   # pismo banku: „Bank potwierdza, że w dniu 26 kwietnia 2026 z rachunku nr …”
+          - 'w dniu\s+(?P<value>\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4})\s*(?:r\.\s*)?,?\s*z\s+rachunku'
         normalize: [date_pl]
       kwota:
         type: number
         description: Kwota przelewu w PLN jako liczba (np. 15000.00).
-        labels: [Kwota operacji, Kwota przelewu, Kwota]
+        labels: [Kwota operacji, Kwota przelewu, Kwota transakcji, Kwota, Wartość operacji, Wartość]
+        patterns: ['w kwocie\s+(?P<value>\d[\d  .,]*\d(?:\s*(?:PLN|zł))?)']   # pismo banku
         normalize: [amount_pl]
       na_rachunek:
         type: string
         description: Numer rachunku odbiorcy — same cyfry (26), bez „PL” i spacji.
-        labels: [Rachunek odbiorcy, Rachunek beneficjenta, Rachunek uznawany, Na rachunek]
+        labels: [Rachunek odbiorcy, Numer rachunku odbiorcy, Nr rachunku odbiorcy, Rachunek beneficjenta, Rachunek uznawany, Rachunek kontrahenta, Konto odbiorcy, Na rachunek, Na konto]
+        value_pattern: '(?:PL)?[ ]?\d{2}(?:[ ]?\d){24}(?!\d)'
+        patterns:
+          # dwie kolumny: „Płatnik  Beneficjent” … wiersz z dwoma rachunkami → prawy
+          - '(?:Płatnik|Nadawca|Zleceniodawca|Dane nadawcy|Dane zleceniodawcy)[ \t]+(?:Beneficjent|Odbiorca|Dane odbiorcy|Dane kontrahenta|Adresat\w*(?: przelewu)?)[ \t]*\n(?:[^\n]*\n){0,3}?[ \t]*(?:PL)?[ ]?\d{2}(?:[ ]?\d){24}[ \t]+(?P<value>(?:PL)?[ ]?\d{2}(?:[ ]?\d){24})[ \t]*$'
+          # pismo banku: „… na rachunek nr 56 2417 …”
+          - '(?<![^\W\d_])na\s+rachunek(?:\s+nr)?\s*:?\s*(?P<value>(?:PL)?\s?\d{2}(?:\s?\d){24})(?!\d)'
+          # blok „Dane odbiorcy” / „Dane kontrahenta” (np. tabela: Nazwa i adres | Numer rachunku | Nazwa banku)
+          - 'Dane (?:odbiorcy|kontrahenta|beneficjenta)[ \t]*\n(?:(?!Dane (?:nadawcy|zleceniodawcy))[\s\S]){0,250}?(?P<value>(?<![\dA-Z])(?:PL)?[ ]?\d{2}(?:[ ]?\d){24})(?!\d)'
         normalize: [account_number]
         validate: [iban_pl]
         ground: digits
       numer_transakcji:
         type: string
         description: Numer referencyjny / identyfikator transakcji nadany przez bank (jeśli występuje).
-        labels: [Numer referencyjny, Nr ref., Identyfikator operacji, Numer transakcji operacji, Numer transakcji, ID transakcji]
+        labels: [Numer referencyjny transakcji, Numer referencyjny operacji, Numer referencyjny, Nr referencyjny, Nr ref., Identyfikator operacji, Identyfikator transakcji, Numer transakcji operacji, Numer transakcji, Nr transakcji, Numer operacji, Nr operacji, ID transakcji, ID operacji]
+        value_pattern: '(?=[A-Z/-]*\d)[A-Z0-9][A-Z0-9/-]{5,}'
         normalize: [strip]
         ground: exact
       tytul:
         type: string
         description: Tytuł przelewu (pole „Tytuł” / „Tytułem” / „Opis”), dokładnie jak w dokumencie.
-        labels: [Tytuł przelewu, Tytułem, Tytuł, Opis]
+        labels: [Tytuł przelewu, Tytułem, Tytuł, Szczegóły płatności, Opis]
+        max_lines: 5   # długi tytuł łamie się na kilka linii
+        # etykieta pisana wielką literą kończy tytuł; ciąg dalszy tytułu małą literą („nr ZP.271.1.2026”) — nie
+        stop: ['(?=(?-i:[A-ZŁŚŻŹĆŃÓ]))(?:Status|Waluta|Typ|Kanał|Tryb|Opłata|Prowizja|Numer|Nr|Kwota|Data|Identyfikator|ID|Nadawca|Odbiorca|Zleceniodawca|Beneficjent|Adresat|Rachunek|Płatnik|Dane|Bank|Dokument|Wartość|Szczegóły|Potwierdzenie|Nazwa|Adres|Signature|Z poważaniem|ZREALIZOWAN\w*|WYKONAN\w*)\b', '\*{3}', '-{5}']
         normalize: [strip_quotes, collapse_whitespace]
         ground: fuzzy
       z_rachunku:
         type: string
         description: Numer rachunku zleceniodawcy (obciążanego) — same cyfry (26), bez „PL” i spacji.
-        labels: [Rachunek zleceniodawcy, Rachunek nadawcy, Rachunek obciążany, Z rachunku]
+        labels: [Rachunek zleceniodawcy, Numer rachunku zleceniodawcy, Rachunek nadawcy, Numer rachunku nadawcy, Nr rachunku nadawcy, Rachunek obciążany, Rachunek płatnika, Konto nadawcy, Z rachunku, Z konta]
+        value_pattern: '(?:PL)?[ ]?\d{2}(?:[ ]?\d){24}(?!\d)'
+        patterns:
+          # dwie kolumny: „Płatnik  Beneficjent” … wiersz z dwoma rachunkami → lewy
+          - '(?:Płatnik|Nadawca|Zleceniodawca|Dane nadawcy|Dane zleceniodawcy)[ \t]+(?:Beneficjent|Odbiorca|Dane odbiorcy|Dane kontrahenta|Adresat\w*(?: przelewu)?)[ \t]*\n(?:[^\n]*\n){0,3}?[ \t]*(?P<value>(?:PL)?[ ]?\d{2}(?:[ ]?\d){24})[ \t]+(?:PL)?[ ]?\d{2}(?:[ ]?\d){24}[ \t]*$'
+          # pismo banku: „… z rachunku nr 34 3654 …”
+          - '(?<![^\W\d_])z\s+rachunku(?:\s+nr)?\s*:?\s*(?P<value>(?:PL)?\s?\d{2}(?:\s?\d){24})(?!\d)'
+          # blok „Dane nadawcy” / „Dane zleceniodawcy”
+          - 'Dane (?:nadawcy|zleceniodawcy)[ \t]*\n(?:(?!Dane (?:odbiorcy|kontrahenta|beneficjenta))[\s\S]){0,250}?(?P<value>(?<![\dA-Z])(?:PL)?[ ]?\d{2}(?:[ ]?\d){24})(?!\d)'
+          # „Przelew z rachunku …” / „Numer rachunku 78 1020 …”
+          - 'z\s+rachunku\b[^\n]*\n[ \t]*Numer\s+rachunku[ \t:]*(?P<value>(?:PL)?[ ]?\d{2}(?:[ ]?\d){24})(?!\d)'
         normalize: [account_number]
         validate: [iban_pl]
         ground: digits
