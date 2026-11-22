@@ -323,6 +323,13 @@ main { display: block; }
 .list-head .help-tip { left: 0; right: 0; width: auto; top: calc(100% + 4px); }
 .side-foot { margin-top: auto; display: grid; gap: var(--s2); justify-items: start; padding-top: var(--s3); }
 .side-note { font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
+/* documents sidebar: header ("+ Dodaj pliki") and footer ("Wyczyść listę") stay put, only the list scrolls */
+.docs-work > .sidebar { overflow: hidden; }
+.docs-work > .sidebar > .list-head, .docs-work > .sidebar > .side-foot { flex: none; }
+.docs-work > .sidebar > .doc-list {
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 2px; margin-inline: -2px; /* room for focus rings and the active item's border */
+}
 .count {
   display: inline-block;
   min-width: 24px;
@@ -604,10 +611,13 @@ details.fgroup > summary:hover { background: var(--surface-3); }
   background: none;
   border: 0;
   cursor: pointer;
-  padding: var(--s3) var(--s4) var(--s2);
-  padding-right: 110px;
+  /* one row: label | value; right side reserved for the confidence dot and the details toggle */
+  padding: var(--s2) 76px var(--s2) var(--s4);
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(110px, 36%) minmax(0, 1fr);
+  column-gap: var(--s4);
+  row-gap: 2px;
+  align-items: baseline;
 }
 .field-main > * { min-width: 0; }
 .field:hover { background: var(--surface-2); }
@@ -619,7 +629,7 @@ details.fgroup > summary:hover { background: var(--surface-3); }
 .field-main:focus-visible { outline-offset: -3px; }
 .field.active { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
 .field.active:hover { background: var(--accent-soft); }
-.field-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.field-label { font-size: var(--fs-sm); font-weight: 500; color: var(--muted); }
 .field-value { font-size: var(--fs-md); overflow-wrap: anywhere; }
 .field-value .val { font-weight: 550; }
 .field-value .null { color: var(--muted); font-style: italic; font-size: var(--fs-sm); }
@@ -633,14 +643,29 @@ details.fgroup > summary:hover { background: var(--surface-3); }
 .conf-word.mid { color: var(--warn); }
 .conf-word.lo { color: var(--err); }
 .mini-table .conf-word { position: static; }
-.field-more { padding: 0 var(--s4) var(--s2); font-size: var(--fs-xs); color: var(--muted); }
-.field-more > summary { cursor: pointer; width: max-content; }
-.field-more > summary:hover { color: var(--text); }
+.conf-dot { position: absolute; top: calc(var(--s2) + 3px); right: 44px; font-size: var(--fs-sm); line-height: 1; cursor: help; }
+.conf-dot.hi { color: var(--ok); }
+.conf-dot.mid { color: var(--warn); }
+.conf-dot.lo { color: var(--err); }
+/* details: a chevron at the end of the row; the content opens below the row */
+.field-more { padding: 0; font-size: var(--fs-xs); color: var(--muted); }
+.field-more[open] { padding: 0 var(--s4) var(--s3); }
+.field-more > summary {
+  position: absolute; top: 2px; right: var(--s2); width: 30px; height: 30px;
+  display: grid; place-items: center; list-style: none; cursor: pointer; border-radius: var(--radius-sm); color: var(--muted);
+}
+.field-more > summary::-webkit-details-marker { display: none; }
+.field-more > summary::before {
+  content: ""; width: 7px; height: 7px; margin-top: -3px;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform 140ms ease;
+}
+.field-more[open] > summary::before { transform: rotate(-135deg); margin-top: 3px; }
+.field-more > summary:hover { color: var(--text); background: var(--surface-3); }
 .field-more dl { margin: var(--s2) 0 var(--s1); display: grid; gap: var(--s1); padding: var(--s3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .field-more dl div { display: grid; grid-template-columns: 140px 1fr; gap: var(--s3); }
 .field-more dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
 .field-more ul { margin: 0; padding-left: 16px; }
-.field-quiet { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); padding: var(--s2) var(--s4); font-size: var(--fs-sm); }
+.field-quiet { display: grid; grid-template-columns: minmax(110px, 36%) minmax(0, 1fr); column-gap: var(--s4); align-items: baseline; padding: var(--s2) 76px var(--s2) var(--s4); font-size: var(--fs-sm); }
 .field-quiet .field-label { font-weight: 500; }
 .field-quiet .null { color: var(--muted); font-size: var(--fs-xs); }
 .field.empty .field-quiet .null { color: var(--warn); font-weight: 600; }
@@ -1004,3 +1029,9 @@ details.cf-sec > summary h3 { font-size: var(--fs-lg); margin: 0; }
 .confirm-dlg h2 { font-size: var(--fs-lg); margin: 0; }
 .confirm-dlg p { margin: 0; color: var(--muted); line-height: 1.5; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s2); }
+
+/* field rows: label | value side by side; stacked when the panel is narrow */
+#fields-panel { container-type: inline-size; }
+@container (max-width: 440px) {
+  .field-main, .field-quiet { grid-template-columns: minmax(0, 1fr); }
+}

@@ -588,6 +588,14 @@ function valueHtml(f) {
   return s;
 }
 
+// compact confidence marker for field rows (the word is in "Szczegóły" → Pewność and in the tooltip)
+function confDot(c) {
+  const l = confLevel(c);
+  if (!l) return "";
+  const icon = l.key === "hi" ? "●" : l.key === "mid" ? "◐" : "○";
+  return `<span class="conf-dot ${l.key}" title="Pewność odczytu: ${l.text.toLowerCase()}"><span aria-hidden="true">${icon}</span><span class="sr-only">Pewność: ${l.text}</span></span>`;
+}
+
 function sourceHtml(f) {
   const ev = f.evidence;
   const boxes = f.boxes || [];
@@ -606,6 +614,8 @@ function moreHtml(f, derived = []) {
   const raw = f.raw_value !== null && f.raw_value !== undefined ? squash(fmtValue(f.raw_value)) : "";
   if (raw && raw !== fmtValue(f.value)) rows.push([f.method === "derived" ? "Wartość źródłowa" : "Tekst w dokumencie", esc(trunc(raw, 200))]);
   if (f.issues?.length) rows.push(["Uwagi", f.issues.map(esc).join("<br>")]);
+  const src = sourceHtml(f);
+  if (src) rows.push(["Źródło", src]);
   if (f.candidates > 1 && f.candidates_detail?.length)
     rows.push([
       "Inne kandydatury",
@@ -615,7 +625,7 @@ function moreHtml(f, derived = []) {
     ]);
   rows.push(["Ścieżka w JSON", `<code>${esc(f.path)}</code>`]);
   for (const d of derived) rows.push([`${esc(fieldLabel(d.path).label)} (ze słownika)`, `${esc(fmtValue(d.value))} · <code>${esc(d.path)}</code>`]);
-  return `<details class="field-more"><summary>Szczegóły</summary><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl></details>`;
+  return `<details class="field-more"><summary title="Szczegóły"><span class="sr-only">Szczegóły</span></summary><dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl></details>`;
 }
 
 function renderFields(p) {
@@ -690,12 +700,12 @@ function renderFields(p) {
       </li>`;
       return;
     }
-    const lvl = f.value !== null && f.method && f.method !== "derived" ? confWord(f.confidence) : "";
+    const lvl = f.value !== null && f.method && f.method !== "derived" ? confDot(f.confidence) : "";
     html += `<li class="field${i === state.activeField ? " active" : ""}${f.value === null ? " empty" : ""}" data-idx="${i}">
       <button class="field-main" type="button" data-idx="${i}" aria-pressed="${i === state.activeField}">
         <span class="field-label">${esc(label)}</span>
         <span class="field-value">${valueHtml(f)}${extra ? `<span class="val-extra">${extra}</span>` : ""} ${tag}</span>
-        <span class="field-meta">${sourceHtml(f)}${lvl}</span>
+        ${lvl}
       </button>
       ${moreHtml(f, derived)}
     </li>`;
