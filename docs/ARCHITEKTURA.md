@@ -115,7 +115,7 @@ input/<sprawa>/<plik>.pdf
 - **Polityka hybrydowa (tryb `hybrid`):** najpierw reguły; LLM uzupełnia tylko pola, które reguły zostawiły puste — nigdy nie nadpisuje wartości z reguł (`extraction.llm_policy: fill_missing` w `config/settings.yaml`; alternatywa `compete` = wygrywa kandydat o wyższej pewności). Wartości z LLM przechodzą tę samą normalizację i weryfikację: wartość tekstowa lub numer, którego nie ma w tekście dokumentu, spada poniżej progu pewności i staje się `null`.
 - **Co dostaje model:** prompt systemowy z `config/prompts/extract_system.md` + instrukcje klasy i słowniki z YAML; tekst dokumentu ze znacznikami stron; JSON Schema wygenerowany z sekcji `output` klasy (structured output; gdy serwer go nie obsługuje — automatycznie `json_object`, potem zwykły prompt). Temperatura 0, ponowienia z informacją o błędzie, cache odpowiedzi w `.cache/llm`.
 - **Klasyfikacja:** gdy reguły są niepewne, a LLM jest dostępny, o klasę pytany jest LLM (zero-shot; lista klas i opisy z YAML; `classification.use_llm_fallback` w `settings.yaml`).
-- **Bez LLM:** tryb `rules` w ogóle nie tworzy klienta LLM (pełny offline). Gdy brak klucza, internetu lub modelu, aplikacja raz wypisuje przyczynę i przetwarza dokumenty w trybie reguł. Wszystkie wyniki w [RAPORT_JAKOSCI.md](RAPORT_JAKOSCI.md) są w trybie reguł.
+- **Bez LLM:** tryb `rules` w ogóle nie tworzy klienta LLM (pełny offline). Gdy brak klucza, internetu lub modelu, aplikacja raz wypisuje przyczynę i przetwarza dokumenty w trybie reguł.
 - **Klucz API:** tylko w pliku `.env` (w `.gitignore`), nigdy w repozytorium; dla jury podajemy go w formularzu zgłoszenia.
 
 ## OCR
@@ -124,7 +124,7 @@ input/<sprawa>/<plik>.pdf
 - Strony renderowane w 300 dpi; rozpoznawanie na wycinkach w pełnej rozdzielczości, linia po linii; linie o pewności < 0.9 czytane ponownie z wycinka o wzmocnionym kontraście; litery spoza polskiego alfabetu (ı ñ š ž à é ç…) zamieniane na polskie/podstawowe; pomijane blade linie przebite z drugiej strony kartki (lustrzane); strona czytana słabo jest próbowana po obrocie o 180° / 90°.
 - Wynik: tekst w kolejności czytania + słowa ze współrzędnymi w punktach PDF (te same co z pdfplumber) — dzięki temu podświetlenia w panelu działają także na skanach.
 - Alternatywy (`OCR_ENGINE`): `easyocr` (opcjonalnie, `requirements-ocr.txt`, torch), `tesseract` (program systemowy + język `pol`; jest w obrazie Docker), `auto` = pierwszy dostępny z kolejności rapidocr → easyocr → tesseract.
-- OCR działa lokalnie (OCR przez API liczyłby się jak LLM). Porównanie konfiguracji: [RAPORT_JAKOSCI.md → Benchmark OCR](RAPORT_JAKOSCI.md#benchmark-ocr).
+- OCR działa lokalnie (OCR przez API liczyłby się jak LLM). Porównanie konfiguracji: `python scripts/ocr_benchmark.py`.
 
 ## Równoległość i wydajność
 
