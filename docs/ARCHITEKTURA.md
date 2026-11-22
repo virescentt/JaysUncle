@@ -5,7 +5,7 @@ Odwołania2JSON zamienia PDF-y postępowania odwoławczego (także skany) na kan
 - **Konfiguracja zamiast kodu** — kod nie zna żadnej klasy dokumentu; wszystko, co specyficzne dla klasy (sygnały rozpoznawania, struktura JSON, etykiety, wzorce, słowniki), jest w plikach YAML.
 - **Precyzja ponad zgadywanie** — błędna wartość kosztuje FP + FN, a `null` tylko FN; niepewne wartości zwracamy jako `null`.
 - **Przejrzystość** — każda wartość ma ślad: strona, fragment tekstu, metoda, pewność, odrzuceni kandydaci.
-- **Działa offline na laptopie biurowym** (16 GB RAM, bez GPU): reguły i OCR lokalnie, LLM opcjonalnie przez API z serwerami w UE.
+- **Działa offline na laptopie biurowym** (16 GB RAM, bez GPU): reguły i OCR lokalnie; LLM (Qwen3.5-9B) przez API z serwerami w UE — dla nowych typów dokumentów i jako opcja dla wbudowanych.
 
 ## Potok
 

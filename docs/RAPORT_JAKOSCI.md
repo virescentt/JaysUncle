@@ -1,6 +1,6 @@
 # Raport jakości
 
-Pomiar z 21.11.2026, tryb `rules` (same reguły, bez LLM). Wyniki z LLM (tryb `hybrid`) dopiszemy po zakończeniu pomiaru — patrz [ARCHITEKTURA.md → LLM](ARCHITEKTURA.md#llm).
+Pomiar z 21–22.11.2026. Wyniki poniżej dotyczą domyślnego trybu `rules` (same reguły, bez LLM); porównanie z LLM (Qwen3.5-9B, Mistral-Small, Olala) — sekcja [„Tryb reguł a hybryda z LLM”](#tryb-reguł-a-hybryda-z-llm).
 
 ## Podsumowanie
 
@@ -12,7 +12,7 @@ Pomiar z 21.11.2026, tryb `rules` (same reguły, bez LLM). Wyniki z LLM (tryb `h
 
 - Wszystkie 16 dokumentów negatywnych (ogłoszenia TED/BZP, decyzje, wyrok KIO, broszura itp.) dostają pusty plik `.json` (0 bajtów), zgodnie z README organizatora.
 - Klasyfikacja: sprawy syntetyczne **180/180**, skany **30/30**, dokumenty negatywne **16/16** (żaden nie został przypisany do klasy).
-- Testy automatyczne: `pytest -q` → **525 passed**.
+- Testy automatyczne: `pytest -q` → **532 passed**.
 
 ## Metryka
 
