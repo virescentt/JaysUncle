@@ -1,6 +1,6 @@
 # Architektura
 
-Odwołania2JSON zamienia PDF-y postępowania odwoławczego (także skany) na kanoniczny JSON. Założenia:
+JaysUncle zamienia PDF-y postępowania odwoławczego (także skany) na kanoniczny JSON. Założenia:
 
 - **Konfiguracja zamiast kodu** — kod nie zna żadnej klasy dokumentu; wszystko, co specyficzne dla klasy (sygnały rozpoznawania, struktura JSON, etykiety, wzorce, słowniki), jest w plikach YAML.
 - **Precyzja ponad zgadywanie** — błędna wartość kosztuje FP + FN, a `null` tylko FN; niepewne wartości zwracamy jako `null`.

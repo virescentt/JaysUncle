@@ -19,7 +19,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="Odwołania2JSON — PDF (KIO) → JSON")
+app = typer.Typer(add_completion=False, no_args_is_help=True, help="JaysUncle — PDF (KIO) → JSON")
 console = Console()
 
 
@@ -46,7 +46,7 @@ def run(
     pipe = Pipeline(settings)
     total = len(find_pdfs(input)[:limit])
     llm_info = settings.llm.model if pipe.llm else "brak (tylko reguły)"
-    console.print(f"[bold]Odwołania2JSON[/] · tryb: {settings.extraction.mode} · LLM: {llm_info} · plików: {total}")
+    console.print(f"[bold]JaysUncle[/] · tryb: {settings.extraction.mode} · LLM: {llm_info} · plików: {total}")
 
     def show(res):
         c = res.classification

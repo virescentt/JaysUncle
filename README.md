@@ -1,8 +1,8 @@
-# Odwołania2JSON
+# JaysUncle
 
 **Od dokumentów do danych.** Automatyczna zamiana dokumentów postępowania odwoławczego przed KIO (odwołanie, pełnomocnictwo, potwierdzenie przelewu — PDF, także skany) na kanoniczny model JSON.
 
-Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
+Zadanie konkursowe Urzędu Zamówień Publicznych „Odwołania2JSON”, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
 
 > Status: **działa** — potok PDF → JSON, OCR skanów, panel webowy, 532 testy. Wbudowane typy dokumentów działają na **regułach** (bez LLM, offline) — najlepszy zmierzony wynik; **LLM (Qwen3.5-9B, OVHcloud, serwery w UE)** odczytuje dane nowych typów dokumentów dodanych w panelu ([docs/ARCHITEKTURA.md → LLM](docs/ARCHITEKTURA.md#llm)).
 
@@ -182,4 +182,4 @@ ruff check .
 
 ## Zespół
 
-Zespół *zschie* — HackNation 2026.
+Zespół *Wanna Pizza* — HackNation 2026.
