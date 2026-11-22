@@ -88,6 +88,15 @@ input/<sprawa>/<plik>.pdf
 - Ślad każdego dokumentu: `traces/<sprawa>/<plik>.trace.json` — klasyfikacja (wynik punktowy każdej klasy, metoda, uzasadnienie), dla każdego pola: wartość, wartość surowa, metoda (`rules:pattern`, `rules:label`, `rules:<strategia>`, `llm`, `derived`), pewność, dowód (strona + fragment tekstu), kandydaci, uwagi (np. „value not found in text”, „best confidence 0.42 < 0.5 → null”), czasy etapów, błędy.
 - Panel webowy pokazuje to samo wizualnie: podgląd stron z **podświetlonym źródłem każdej wartości** (współrzędne słów z pdfplumber, a dla skanów z OCR), tabela pól z metodą, pewnością i źródłem, lista kandydatów, wartości odrzucone z powodem, pewność OCR strony.
 
+## Panel webowy
+
+`./start.sh web` (Windows: `start.bat web`, Docker: `docker compose up web`) → http://localhost:8000. Serwer działa lokalnie, na tym samym komputerze — niczego nie trzeba hostować.
+
+- **Dokumenty** — wgranie PDF-ów (przeciągnij i upuść, kilka naraz). Dla każdego: rozpoznany typ, wynik JSON (dokładnie taki plik, jaki zapisuje CLI) do skopiowania lub pobrania, pola z ludzkimi nazwami, pewnością i fragmentem źródłowym, podgląd stron z **podświetlonym źródłem każdej wartości** (także na skanach; powiększanie, przesuwanie myszą).
+- **Typy dokumentów** — lista typów z przełącznikiem „Rozpoznawany / Wyłączony”; podgląd i edycja typu w formularzu (dla urzędnika) albo w YAML (tryb zaawansowany): **Sprawdź** · **Testuj na pliku PDF** (bez zapisywania) · **Zapisz** (do `config/doc_types/`, potok przeładowany od razu; komentarze w pliku zostają). Nowy typ: kreator w 3 krokach (nazwa → frazy rozpoznawania, np. kliknięte w przykładowym PDF → informacje do odczytania).
+- **Słowniki** — podgląd słowników wartości (np. powody odwołania).
+- `ODWOLANIA2JSON_WEB_READONLY=1` wyłącza zapisywanie typów z panelu.
+
 ## LLM
 
 - **Klient:** dowolne API zgodne z OpenAI (`openai` SDK), bez kodu specyficznego dla dostawcy; konfiguracja wyłącznie w `.env` (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). Lokalnie można użyć Ollama / vLLM / llama.cpp.
@@ -123,6 +132,21 @@ input/<sprawa>/<plik>.pdf
 - Instancje silnika OCR są współdzielone, a wywołania serializowane blokadą (onnxruntime i tak używa wszystkich rdzeni); PDFium nie jest bezpieczne wątkowo, więc każde wywołanie przechodzi przez wspólną blokadę `PDFIUM_LOCK`.
 - Zapisy cache są atomowe (plik tymczasowy + `os.replace`), więc równoległe wątki i procesy nie widzą niedokończonych wpisów.
 - Panel webowy przetwarza dokumenty w osobnej puli (2 wątki), a podglądy stron i walidację YAML w puli wątków — pętla zdarzeń serwera nie jest blokowana.
+
+## Komendy
+
+`./start.sh` / `start.bat` = `python -m odwolania2json run` na folderach `input/` → `output/`; `./start.sh --help` pokazuje wszystkie komendy.
+
+| Komenda (`python -m odwolania2json …`) | Opis |
+|---|---|
+| `run -i input -o output` | przetwarza wszystkie PDF-y |
+| `classify plik.pdf …` | punkty klasyfikacji dla każdego typu dokumentu |
+| `inspect plik.pdf` | tekst każdej strony (warstwa tekstowa / OCR) |
+| `doc-types` | lista typów dokumentów + walidacja konfiguracji YAML |
+| `schema przelew [--json-schema]` | pusty szablon JSON / schemat przekazywany do LLM |
+| `web` | panel webowy |
+
+Lokalnie zamiast OVHcloud można użyć dowolnego serwera zgodnego z OpenAI, np. Ollama (`ollama pull qwen3.5:9b`, `LLM_BASE_URL=http://localhost:11434/v1`; w Dockerze: `docker compose --profile local-llm up -d ollama`).
 
 ## Docker
 

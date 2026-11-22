@@ -107,12 +107,13 @@ python scripts/fetch_data.py                                    # dane UZP → d
 python -m evaluation.run_eval --mode rules                      # --subset fast (domyślnie): 60 spraw syntetycznych + negatywne
 python -m evaluation.run_eval --mode rules --subset scans       # 30 skanów organizatora (OCR: pierwszy przebieg kilka minut, potem cache)
 python -m evaluation.run_eval --mode rules --subset negatives   # tylko folder dane/negatywne (12 PDF)
+python scripts/make_scans.py && python -m evaluation.run_eval --data data/scans/dane   # syntetyczne skany
 python scripts/ocr_benchmark.py                                 # benchmark OCR, ustawienia domyślne
 python scripts/ocr_benchmark.py --list                          # dostępne konfiguracje do porównania (--config …)
 pytest -q                                                       # testy
 ```
 
-- Bez `--mode` obowiązuje tryb z `config/settings.yaml` / `.env` (domyślnie `hybrid`, czyli z LLM, jeśli jest skonfigurowany).
+- Bez `--mode` obowiązuje tryb z `config/settings.yaml` / `.env` (domyślnie `rules`).
 - 4 dokumenty negatywne leżące w folderach spraw są liczone w zbiorze `fast`, nie w `negatives`.
 - Raport: `runs/<czas>/report.json` (F1 ogółem, wg typu, wg pola, wg sprawy, przykłady błędów) oraz kopia w `runs/latest_report.json`; wyniki i ślady w `runs/<czas>/output/` i `runs/<czas>/traces/`.
 - Ocena gotowych wyników: `python -m evaluation.score --pred runs/<czas>/output --gold data/uzp/dane`.
