@@ -1,4 +1,4 @@
-# Odwołania2JSON — obraz CPU-only (bez GPU). LLM dostępny przez API (np. serwis ollama z docker-compose).
+# JaysUncle — obraz CPU-only (bez GPU). LLM dostępny przez API (np. serwis ollama z docker-compose).
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

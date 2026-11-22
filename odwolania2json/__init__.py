@@ -1,4 +1,4 @@
-"""Odwołania2JSON — extraction of KIO appeal documents (PDF) into the canonical JSON model."""
+"""JaysUncle — extraction of KIO appeal documents (PDF) into the canonical JSON model."""
 
 from pathlib import Path
 
