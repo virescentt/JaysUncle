@@ -207,3 +207,30 @@ export async function copyText(text) {
     return ok;
   }
 }
+
+/** In-app confirmation instead of the browser's "localhost says" box. Resolves true (OK) or false (cancel, Esc, click outside). */
+export function confirmDialog(message, { title = "Potwierdź", ok = "Tak", cancel = "Anuluj", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "confirm-dlg";
+    dlg.setAttribute("aria-labelledby", "confirm-title");
+    dlg.innerHTML = `<form method="dialog">
+        <h2 id="confirm-title">${esc(title)}</h2>
+        <p>${esc(message).replace(/\n/g, "<br>")}</p>
+        <div class="confirm-actions">
+          <button class="btn" type="submit" value="cancel">${esc(cancel)}</button>
+          <button class="btn ${danger ? "danger" : "primary"}" type="submit" value="ok">${esc(ok)}</button>
+        </div>
+      </form>`;
+    document.body.append(dlg);
+    dlg.addEventListener("close", () => {
+      resolve(dlg.returnValue === "ok");
+      dlg.remove();
+    });
+    dlg.addEventListener("click", (e) => {
+      if (e.target === dlg) dlg.close("cancel"); // click on the backdrop
+    });
+    dlg.showModal();
+    dlg.querySelector(danger ? '[value="cancel"]' : '[value="ok"]').focus(); // risky action → the safe button has focus
+  });
+}

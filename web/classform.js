@@ -3,7 +3,7 @@
 // Klucze, których formularz nie obsługuje (strategy, params, section, enum, …), są przechowywane i oddawane bez zmian,
 // kolejność kluczy jest zachowana.
 
-import { humanizeKey, plural } from "./util.js";
+import { humanizeKey, plural, confirmDialog } from "./util.js";
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -432,21 +432,12 @@ export function renderForm(root, m, ctx) {
   const sec1 = section(
     "basic",
     "Podstawowe informacje",
-    m.enabled === false ? "wyłączony" : "rozpoznawany",
+    null,
     null,
     field("Nazwa typu dokumentu", nameInput, "Tak ten typ będzie widoczny na liście dokumentów."),
     field("Krótki opis", text(m, "description", { rows: 2, placeholder: "Czym jest dokument i kto go wystawia." })),
-    h(
-      "div",
-      { class: "cf-grid2" },
-      h("div", { class: "cf-lbl" }, h("label", { for: idInput.id, text: "Identyfikator" }), idInput, idMsg),
-      h(
-        "div",
-        { class: "cf-lbl cf-lbl-check" },
-        check(m, "enabled", "Rozpoznawany (włączony)"),
-        h("small", { class: "cf-help", text: "Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON." }),
-      ),
-    ),
+    // on / off: the switch next to the type's title (saved at once, like the switch in the list)
+    h("div", { class: "cf-lbl cf-id" }, h("label", { for: idInput.id, text: "Identyfikator" }), idInput, idMsg),
   );
 
   // ---------------------------------------------------------------- 2. rozpoznawanie
@@ -713,8 +704,16 @@ export function renderForm(root, m, ctx) {
           btn("↓", move(1), { title: "Przesuń niżej", "aria-label": "Przesuń pole niżej", disabled: i === siblings.length - 1 ? true : null }),
           btn(
             "Usuń pole",
-            () => {
-              if (n.children?.length && !confirm(`Usunąć pole „${n.key}” razem z polami w tej grupie?`)) return;
+            async () => {
+              if (
+                n.children?.length &&
+                !(await confirmDialog(`Pole „${n.key}” zostanie usunięte razem ze wszystkimi polami w tej grupie.`, {
+                  title: "Usunąć grupę pól?",
+                  ok: "Usuń",
+                  danger: true,
+                }))
+              )
+                return;
               siblings.splice(i, 1);
               rerender();
             },

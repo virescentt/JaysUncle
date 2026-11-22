@@ -4,7 +4,7 @@
 // Pole tekstowe YAML jest zawsze źródłem prawdy dla Sprawdź / Testuj / Zapisz: w trybie formularza zmiany są najpierw
 // zamieniane na YAML (/api/doc-types/dump). Przełączenie bez zmian w formularzu nie zmienia tekstu YAML (komentarze zostają).
 
-import { $, esc, api, toast, fmtValue, trunc, plural, fieldLabel, confWord, humanizeKey } from "./util.js";
+import { $, esc, api, toast, fmtValue, trunc, plural, fieldLabel, confWord, humanizeKey, confirmDialog } from "./util.js";
 import { buildModel, modelToJson, renderForm, canon } from "./classform.js";
 import { openWizard, closeWizard, wizardOpen, wizardDirty } from "./wizard.js";
 
@@ -49,9 +49,10 @@ export function initWorkshop(hooks) {
   el.list = $("#class-list");
 
   el.list.addEventListener("click", (e) => {
+    // the switch toggles; a click anywhere else on the card opens the type
     const sw = e.target.closest("[data-toggle]");
     if (sw) return toggleEnabled(sw.dataset.toggle, sw);
-    const item = e.target.closest(".class-item");
+    const item = e.target.closest("li")?.querySelector(".class-item");
     if (item) openClass(item.dataset.id);
   });
   el.new.addEventListener("click", newClass);
@@ -74,6 +75,10 @@ export function initWorkshop(hooks) {
     if (e.target.closest("[data-open]") && ws.lastTest) ws.hooks.onOpenDocument(ws.lastTest);
   });
   initDictMenu();
+  $("#ws-enabled").addEventListener("click", (e) => {
+    const sw = e.target.closest("[data-toggle]");
+    if (sw) toggleEnabled(sw.dataset.toggle, sw);
+  });
   initEditor();
   window.addEventListener("beforeunload", (e) => {
     if (isDirty()) e.preventDefault();
@@ -192,6 +197,25 @@ export async function refreshClasses() {
 // ------------------------------------------------------------------ list
 const SWITCH_HINT = "Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON";
 
+/** On/off switch of a document type (the list and the header next to the open type use the same markup). */
+function switchHtml(c, readonly) {
+  const on = !!c.enabled;
+  return `<button class="switch" type="button" role="switch" aria-checked="${on}" data-toggle="${esc(c.id)}"
+            ${readonly ? "disabled" : ""} title="${readonly ? "Zmiany zostały wyłączone przez administratora" : SWITCH_HINT}"
+            aria-label="${esc(c.name || c.id)}: ${on ? "rozpoznawany" : "wyłączony"}">
+            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            <span class="switch-label">${on ? "Rozpoznawany" : "Wyłączony"}</span>
+          </button>`;
+}
+
+/** The switch next to the title of the open (saved) type; hidden for a new type / the wizard. */
+function renderHeaderSwitch() {
+  const box = $("#ws-enabled");
+  const c = ws.current?.id ? ws.classes?.find((x) => x.id === ws.current.id) : null;
+  box.hidden = !c?.valid || !el.wizard.hidden;
+  box.innerHTML = box.hidden ? "" : switchHtml(c, !!ws.hooks.getHealth()?.readonly);
+}
+
 function renderList() {
   const readonly = !!ws.hooks.getHealth()?.readonly;
   el.list.innerHTML = ws.classes
@@ -199,12 +223,7 @@ function renderList() {
       const on = !!c.enabled;
       const control = !c.valid
         ? `<span class="status err">błąd w konfiguracji</span>`
-        : `<button class="switch" type="button" role="switch" aria-checked="${on}" data-toggle="${esc(c.id)}"
-            ${readonly ? "disabled" : ""} title="${readonly ? "Zmiany zostały wyłączone przez administratora" : SWITCH_HINT}"
-            aria-label="${esc(c.name || c.id)}: ${on ? "rozpoznawany" : "wyłączony"}">
-            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-            <span class="switch-label">${on ? "Rozpoznawany" : "Wyłączony"}</span>
-          </button>`;
+        : switchHtml(c, readonly);
       const desc = String(c.description || "").replace(/\s+/g, " ").trim();
       const active = ws.current?.id === c.id;
       return `<li class="${c.valid && !on ? "off" : ""}">
@@ -225,6 +244,7 @@ async function toggleEnabled(id, btn) {
   if (ws.hooks.getHealth()?.readonly) return toast("Zmiany zostały wyłączone przez administratora");
   if (ws.current?.id === id && isDirty()) return toast("Najpierw zapisz albo cofnij zmiany w tym typie dokumentu", 3500);
   const enabled = !c.enabled;
+  const fromHeader = !!btn.closest("#ws-enabled");
   btn.disabled = true;
   try {
     const res = await jsonPut(`/api/doc-types/${encodeURIComponent(id)}/enabled`, { enabled });
@@ -237,7 +257,7 @@ async function toggleEnabled(id, btn) {
       await setEditor(text, { ...ws.current });
     }
     toast(enabled ? `„${c.name}” jest znowu rozpoznawany` : `„${c.name}” jest wyłączony — takie dokumenty dostaną pusty plik JSON`, 4000);
-    el.list.querySelector(`[data-toggle="${CSS.escape(id)}"]`)?.focus();
+    (fromHeader ? $("#ws-enabled [data-toggle]") : el.list.querySelector(`[data-toggle="${CSS.escape(id)}"]`))?.focus();
   } catch (e) {
     btn.disabled = false;
     toast(e.message, 5000);
@@ -356,12 +376,21 @@ function openDictionary(id) {
   $("#dict-dlg").showModal();
 }
 
-function confirmDiscard() {
-  return !isDirty() || confirm("Masz niezapisane zmiany. Czy na pewno chcesz je porzucić?");
+async function confirmDiscard() {
+  return (
+    !isDirty() ||
+    confirmDialog("Zmiany w tym typie dokumentu nie zostały zapisane i zostaną utracone.", {
+      title: "Porzucić niezapisane zmiany?",
+      ok: "Porzuć zmiany",
+      cancel: "Wróć",
+      danger: true,
+    })
+  );
 }
 
 async function openClass(id) {
-  if ((ws.current?.id === id && !wizardOpen()) || !confirmDiscard()) return;
+  if (ws.current?.id === id && !wizardOpen()) return;
+  if (!(await confirmDiscard())) return;
   closeWizard();
   try {
     const text = await api(`/api/doc-types/${encodeURIComponent(id)}/yaml`);
@@ -373,7 +402,7 @@ async function openClass(id) {
 }
 
 async function newClass() {
-  if (!confirmDiscard()) return;
+  if (!(await confirmDiscard())) return;
   ws.current = null;
   ws.form = null;
   el.msg.innerHTML = "";
@@ -385,8 +414,17 @@ async function newClass() {
   openWizard(el.wizard, {
     jsonPost,
     getHealth: ws.hooks.getHealth,
-    onCancel: () => {
-      if (wizardDirty() && !confirm("Porzucić tworzenie nowego typu dokumentu?")) return;
+    onCancel: async () => {
+      if (
+        wizardDirty() &&
+        !(await confirmDialog("Wpisane dane nowego typu dokumentu nie zostaną zapisane.", {
+          title: "Porzucić tworzenie typu?",
+          ok: "Porzuć",
+          cancel: "Wróć",
+          danger: true,
+        }))
+      )
+        return;
       closeWizard();
       el.title.textContent = "Wybierz typ dokumentu z listy";
       el.file.textContent = "";
@@ -409,7 +447,15 @@ async function saveFromWizard(yaml) {
   el.yaml.value = yaml;
   const rep = await validate();
   if (!rep.ok) return showReport(rep);
-  if (ws.classes.some((c) => c.id === rep.id) && !confirm(`Typ dokumentu o identyfikatorze „${rep.id}” już istnieje. Zastąpić go?`)) return;
+  if (
+    ws.classes.some((c) => c.id === rep.id) &&
+    !(await confirmDialog(`Typ dokumentu o identyfikatorze „${rep.id}” już istnieje. Zapis go zastąpi.`, {
+      title: "Zastąpić istniejący typ?",
+      ok: "Zastąp",
+      danger: true,
+    }))
+  )
+    return;
   showMessage("info", '<span class="spinner" aria-hidden="true"></span> Zapisuję…');
   const res = await api(`/api/doc-types/${encodeURIComponent(rep.id)}/yaml`, {
     method: "PUT",
@@ -480,6 +526,7 @@ function updateHeader() {
   el.save.title = readonly ? "Zapisywanie zostało wyłączone przez administratora" : "Zapisz typ dokumentu (Ctrl/⌘+S)";
   el.readonly_note.hidden = !readonly;
   el.revert.disabled = ws.busy || !dirty;
+  renderHeaderSwitch();
 }
 
 function setBusy(on, text = "") {
@@ -694,8 +741,8 @@ async function save() {
   if (!ws.current || ws.busy) return;
   if (ws.hooks.getHealth()?.readonly) return toast("Zapisywanie zostało wyłączone przez administratora");
   if (formChanged() && ws.form.losses.length) {
-    const q = `Zapis z formularza usunie z pliku konfiguracji: ${ws.form.losses.join("; ")}.\n\nAby to zachować, anuluj i skorzystaj z trybu zaawansowanego (YAML). Zapisać mimo to?`;
-    if (!confirm(q)) return;
+    const q = `Zapis z formularza usunie z pliku konfiguracji: ${ws.form.losses.join("; ")}.\n\nAby to zachować, anuluj i skorzystaj z trybu zaawansowanego (YAML).`;
+    if (!(await confirmDialog(q, { title: "Zapisać mimo to?", ok: "Zapisz mimo to", danger: true }))) return;
   }
   setBusy(true, "Sprawdzam przed zapisem…");
   try {
@@ -709,11 +756,15 @@ async function save() {
     const cur = ws.current;
     const question =
       cur.id && id !== cur.id
-        ? `Zmieniono identyfikator z „${cur.id}” na „${id}”.\nZapisać jako NOWY typ dokumentu? Typ „${cur.id}” pozostanie bez zmian.`
+        ? {
+            text: `Zmieniono identyfikator z „${cur.id}” na „${id}”. Zostanie zapisany NOWY typ dokumentu, a „${cur.id}” pozostanie bez zmian.`,
+            title: "Zapisać jako nowy typ?",
+            ok: "Zapisz jako nowy",
+          }
         : !cur.id && ws.classes.some((c) => c.id === id)
-          ? `Typ dokumentu o identyfikatorze „${id}” już istnieje. Zastąpić go?`
+          ? { text: `Typ dokumentu o identyfikatorze „${id}” już istnieje. Zapis go zastąpi.`, title: "Zastąpić istniejący typ?", ok: "Zastąp", danger: true }
           : null;
-    if (question && !confirm(question)) {
+    if (question && !(await confirmDialog(question.text, question))) {
       el.msg.innerHTML = "";
       return;
     }
@@ -746,7 +797,15 @@ async function save() {
 
 async function revert() {
   if (!ws.current || !isDirty()) return;
-  if (!confirm("Cofnąć wszystkie niezapisane zmiany?")) return;
+  if (
+    !(await confirmDialog("Wszystkie niezapisane zmiany w tym typie dokumentu zostaną cofnięte.", {
+      title: "Cofnąć zmiany?",
+      ok: "Cofnij zmiany",
+      cancel: "Wróć",
+      danger: true,
+    }))
+  )
+    return;
   el.yaml.value = ws.current.original;
   ws.errorLines = new Set();
   updateGutter();
