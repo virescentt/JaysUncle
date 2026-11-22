@@ -152,11 +152,14 @@ class AppState:
         self.save_lock = threading.Lock()
 
     # ------------------------------------------------------------------ pipeline
-    def _build(self) -> Pipeline:
+    def _build(self, previous: Pipeline | None = None) -> Pipeline:
         settings = Settings.load(self.config_dir)
         if self.mode:
             settings.extraction.mode = self.mode  # type: ignore[assignment]
-        return Pipeline(settings)
+        # saving / switching a class does not touch the LLM settings: keep the client that already passed its
+        # reachability check (a new check = a network round trip on every save / on-off switch, up to 10 s)
+        llm = previous.llm if previous is not None and previous.settings.llm == settings.llm else None
+        return Pipeline(settings, llm=llm)
 
     def pipeline(self) -> Pipeline:
         with self._lock:
@@ -170,7 +173,7 @@ class AppState:
 
     def reload(self) -> Pipeline:
         with self._lock:
-            new = self._build()  # raises → the old pipeline stays active
+            new = self._build(self._pipeline)  # raises → the old pipeline stays active
             self._pipeline = new
             return new
 

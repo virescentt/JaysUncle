@@ -18,8 +18,8 @@ def write_json(path: Path, data: Any, indent: int = 2) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=indent, default=str) + "\n", encoding="utf-8")
 
 
-def write_result(path: Path, data: dict | None, unknown_output: str = "empty_file", indent: int = 2) -> None:
-    """Write the canonical JSON, or the 'unrecognised document' marker (organizer README: empty .json file)."""
+def write_result(path: Path, data: dict | None, unknown_output: str = "empty_object", indent: int = 2) -> None:
+    """Write the canonical JSON, or the 'unrecognised document' marker (organizer README: empty .json → "{}")."""
     if data is not None:
         write_json(path, data, indent)
     elif unknown_output == "empty_file":

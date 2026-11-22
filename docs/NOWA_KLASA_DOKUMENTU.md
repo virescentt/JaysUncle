@@ -85,7 +85,7 @@ Wynik (tryb reguł, sprawdzony 21.11.2026): klasa `ogloszenie_ted`, 6 pkt (odwo�
 {"ogloszenie": {"numer_ted": "383751-2025", "nabywca": "Przedsiębiorstwo Wodociągów i Kanalizacji Sp. z o.o. w Gdyni", "tytul": "Przebudowa Stacji Uzdatniania Wody \"Rumia\" wraz z przebudową ujęć wód i", "numer_postepowania": "ZP/15/FENIKS/2025"}}
 ```
 
-Ogłoszenie krajowe z BZP (`2025_BZP 00143067_01.pdf`) dostaje tylko 2 pkt < `min_score` i nadal zwraca pusty plik — klasa rozpoznaje tylko ogłoszenia TED.
+Ogłoszenie krajowe z BZP (`2025_BZP 00143067_01.pdf`) dostaje tylko 2 pkt < `min_score` i nadal zwraca pusty JSON `{}` — klasa rozpoznaje tylko ogłoszenia TED.
 
 ### Krok 6. Popraw pole, które wychodzi źle
 
@@ -129,7 +129,7 @@ Wynik: „Przebudowa Stacji Uzdatniania Wody "Rumia" wraz z przebudową ujęć w
 | `negative_signals` | jak `signals`, ale wagi są odejmowane |
 | `description` | dodatkowy opis dla klasyfikatora LLM (inaczej używany jest `description` klasy) |
 
-Wygrywa klasa z najwyższym wynikiem, jeśli osiąga swój `min_score`; jeśli żadna — dokument dostaje pusty plik `.json`.
+Wygrywa klasa z najwyższym wynikiem, jeśli osiąga swój `min_score`; jeśli żadna — dokument dostaje pusty JSON `{}`.
 
 ### `extraction` (dla LLM)
 

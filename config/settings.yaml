@@ -45,8 +45,8 @@ output:
   write_traces: true
   traces_dir: traces          # ślady ekstrakcji (przejrzystość): skąd pochodzi każda wartość
   # dokument nierozpoznany (np. ogłoszenie TED) — wg README organizatora „zwrócić pusty plik .json”:
-  #   empty_file = plik 0 bajtów · empty_object = "{}" · none = brak pliku   (do potwierdzenia z UZP)
-  unknown_output: empty_file
+  #   empty_object = pusty obiekt JSON "{}" (poprawny JSON) · empty_file = plik 0 bajtów · none = brak pliku
+  unknown_output: empty_object
   indent: 2
 
 pipeline:

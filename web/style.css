@@ -1035,3 +1035,4 @@ details.cf-sec > summary h3 { font-size: var(--fs-lg); margin: 0; }
 @container (max-width: 440px) {
   .field-main, .field-quiet { grid-template-columns: minmax(0, 1fr); }
 }
+.empty-json:has(+ .json) { padding-bottom: 0; }

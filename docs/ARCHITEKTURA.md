@@ -21,7 +21,7 @@ input/<sprawa>/<plik>.pdf
         ▼
  2. CLASSIFY   classify/rules.py  (+ classify/llm.py, gdy reguły są niepewne i LLM jest dostępny)
                ważone sygnały regex z YAML, bez polskich znaków (odporność na OCR), próg min_score
-               ── żadna klasa ──► pusty plik output/<sprawa>/<plik>.json (0 bajtów)
+               ── żadna klasa ──► output/<sprawa>/<plik>.json z pustym obiektem {}
         │
         ▼
  3. EXTRACT    extract/rules.py → kandydaci z reguł (wartość, metoda, pewność, dowód)
@@ -45,7 +45,7 @@ input/<sprawa>/<plik>.pdf
 
 **4. Merge.** Dla każdego pola: normalizacja kandydatów (np. `date_pl`, `amount_pl`, `account_number`), weryfikacja, że wartość występuje w tekście (`ground: exact | digits | fuzzy`; brak → kara do pewności), miękkie walidatory sum kontrolnych (nie usuwają wartości, tylko zmieniają pewność), wybór najlepszego kandydata (w trybie `hybrid` najpierw spośród kandydatów z reguł — zob. [LLM](#llm)), próg `extraction.min_confidence: 0.5`. Pola pochodne (np. opis czynności z identyfikatora) wypełnia słownik.
 
-**5. Output.** Struktura katalogów `output/` odwzorowuje `input/` 1:1, z tą samą nazwą pliku. Dokument nierozpoznany → pusty plik (`output.unknown_output: empty_file`; alternatywy: `empty_object` = `{}`, `none` = brak pliku).
+**5. Output.** Struktura katalogów `output/` odwzorowuje `input/` 1:1, z tą samą nazwą pliku. Dokument nierozpoznany → pusty obiekt JSON `{}` (`output.unknown_output: empty_object`; alternatywy: `empty_file` = plik 0 bajtów, `none` = brak pliku).
 
 ## Mapa modułów
 
@@ -63,7 +63,7 @@ input/<sprawa>/<plik>.pdf
 | `odwolania2json/normalize/` | normalizatory: daty, kwoty, rachunki, BZP/TED, imiona i nazwiska, kody, białe znaki… |
 | `odwolania2json/validate/` | walidatory sum kontrolnych: NIP, REGON, KRS, PESEL, IBAN (PL) |
 | `odwolania2json/llm/client.py` | klient dowolnego API zgodnego z OpenAI |
-| `odwolania2json/output/writer.py` | ścieżki wyników, pusty plik dla dokumentu nierozpoznanego |
+| `odwolania2json/output/writer.py` | ścieżki wyników, `{}` dla dokumentu nierozpoznanego |
 | `odwolania2json/api/` | panel webowy: `app.py` (FastAPI), `store.py` (sesja dokumentów), `results.py`, `highlight.py` (podświetlenia), `workshop.py` (edytor klas) |
 | `web/` | frontend: czysty HTML/CSS/JS, bez kroku budowania i bez CDN |
 | `evaluation/` | `score.py` (metryka F1), `run_eval.py` (przebieg na zbiorze treningowym) |

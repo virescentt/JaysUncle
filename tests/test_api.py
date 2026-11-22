@@ -119,9 +119,9 @@ def test_process_synthetic_pdf(client):
 def test_process_negative_pdf_gives_empty_json(client):
     (doc,) = _upload(client, NEGATIVE, "inny dokument.pdf").json()
     assert doc["doc_type"] is None and doc["data"] is None and doc["fields"] == []
-    assert doc["json_text"] == ""
+    assert doc["json_text"] == "{}\n"  # unrecognised → empty JSON object (output.unknown_output: empty_object)
     dl = client.get(f"/api/doc/{doc['id']}/json")
-    assert dl.status_code == 200 and dl.content == b""
+    assert dl.status_code == 200 and dl.content == b"{}\n"
     assert "inny" in dl.headers["content-disposition"] and ".json" in dl.headers["content-disposition"]
 
 

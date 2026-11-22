@@ -31,7 +31,9 @@ def find_pdfs(root: Path) -> list[Path]:
 
 
 class Pipeline:
-    def __init__(self, settings: Settings | None = None, registry: Registry | None = None):
+    def __init__(self, settings: Settings | None = None, registry: Registry | None = None, llm: LLMClient | None = None):
+        """`llm`: an already checked client for the same LLM settings (web reload after a class change) —
+        reused instead of a new client + reachability check, which is a network round trip (up to 10 s)."""
         self.settings = settings or Settings.load()
         self.registry = registry or load_registry(self.settings.config_dir)
         self.llm = None
@@ -39,7 +41,7 @@ class Pipeline:
             dt.extraction.mode in ("llm", "hybrid") for dt in self.registry.doc_types.values()
         )
         if needs_llm:  # rules everywhere = fully offline, no LLM at all
-            self.llm = LLMClient.from_settings(self.settings.llm)
+            self.llm = llm or LLMClient.from_settings(self.settings.llm)
 
     def process_file(self, pdf: Path) -> DocumentResult:
         timings: dict[str, float] = {}

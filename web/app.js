@@ -292,7 +292,7 @@ function docStatus(d) {
   if (d.status === "error") return { cls: "err", text: "Błąd" };
   const p = d.payload;
   if (p.errors?.length) return { cls: "err", text: "Błąd odczytu" };
-  if (!p.doc_type) return { cls: "none", text: "Nie rozpoznano — pusty plik JSON" };
+  if (!p.doc_type) return { cls: "none", text: "Nie rozpoznano — pusty JSON {}" };
   return { cls: "ok", text: "Rozpoznano" };
 }
 
@@ -806,7 +806,13 @@ function renderJson(p) {
     body = `<div class="empty-json"><strong>Pusty plik JSON</strong>
       <p>Dokument nie został rozpoznany jako żaden z typów dokumentów, dlatego — zgodnie z zasadami — wynikiem jest pusty plik.
       Taki sam plik powstanie przy przetwarzaniu wsadowym.</p></div>`;
-  else body = `<pre class="json" tabindex="0" aria-label="Wynik w formacie JSON"><code>${highlightJson(text)}</code></pre>`;
+  else {
+    body = `<pre class="json" tabindex="0" aria-label="Wynik w formacie JSON"><code>${highlightJson(text)}</code></pre>`;
+    if (!p.doc_type)
+      body = `<div class="empty-json"><strong>Pusty JSON {}</strong>
+        <p>Dokument nie został rozpoznany jako żaden z typów dokumentów, dlatego — zgodnie z zasadami — wynikiem jest pusty obiekt JSON.
+        Taki sam plik powstanie przy przetwarzaniu wsadowym.</p></div>${body}`;
+  }
   panel.innerHTML = toolbar + body;
 }
 

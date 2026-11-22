@@ -9,7 +9,7 @@ Zamiana dokumentów postępowania odwoławczego przed KIO (odwołanie, pełnomoc
 
 ## Możliwości
 
-- Rozpoznaje typ dokumentu po treści; dokumenty spoza zakresu → pusty `.json`.
+- Rozpoznaje typ dokumentu po treści; dokumenty spoza zakresu → pusty JSON `{}`.
 - Czyta skany (lokalny OCR, bez GPU).
 - Nowy typ dokumentu = plik YAML, bez zmian w kodzie (także kreatorem w panelu).
 - LLM: Qwen3.5-9B przez OVHcloud (serwery w UE); bez klucza działa na regułach, offline.

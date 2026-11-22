@@ -50,7 +50,7 @@ def run(
 
     def show(res):
         c = res.classification
-        status = f"[green]{c.doc_type}[/]" if c.doc_type else "[yellow]nierozpoznany → pusty JSON[/]"
+        status = f"[green]{c.doc_type}[/]" if c.doc_type else "[yellow]nierozpoznany → {}[/]"
         extra = " [dim](OCR)[/]" if res.scanned else ""
         err = f" [red]{'; '.join(res.errors)}[/]" if res.errors else ""
         console.print(f"  {res.source.relative_to(input)} → {status} ({c.confidence:.2f}, {c.method}){extra}{err}")

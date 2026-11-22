@@ -72,7 +72,7 @@ export function classHue(id) {
 }
 export function badgeHtml(docType, name, big = false) {
   const cls = big ? " big" : "";
-  if (!docType) return `<span class="badge unknown${cls}" title="Dokument nie pasuje do żadnego typu — wynikiem jest pusty plik JSON">Nie rozpoznano</span>`;
+  if (!docType) return `<span class="badge unknown${cls}" title="Dokument nie pasuje do żadnego typu — wynikiem jest pusty JSON {}">Nie rozpoznano</span>`;
   return `<span class="badge${cls}" style="--h:${classHue(docType)}">${esc(name || docType)}</span>`;
 }
 

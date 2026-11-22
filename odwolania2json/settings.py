@@ -97,8 +97,9 @@ class PipelineSettings(BaseModel):
 class OutputSettings(BaseModel):
     write_traces: bool = True
     traces_dir: str = "traces"
-    # Unrecognised document (not one of the classes): organizer README → "zwrócić pusty plik .json"
-    unknown_output: Literal["empty_file", "empty_object", "none"] = "empty_file"
+    # Unrecognised document (not one of the classes): organizer README → "zwrócić pusty plik .json";
+    # default "{}" (empty_object: still valid JSON), alternatives: a 0-byte file or no file at all
+    unknown_output: Literal["empty_file", "empty_object", "none"] = "empty_object"
     indent: int = 2
 
 

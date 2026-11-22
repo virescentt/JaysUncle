@@ -113,6 +113,9 @@ function showMode() {
   el.mode_toggle.setAttribute("aria-pressed", String(yamlShown));
   el.mode_toggle.textContent = yamlShown ? "← Wróć do formularza" : "Tryb zaawansowany (YAML)";
   el.preview.hidden = !open || yamlShown;
+  // the header switch belongs to the open saved type only: re-render on every view change, otherwise the
+  // switch of the previously opened type stays visible in the new-type wizard (and would toggle that old type)
+  renderHeaderSwitch();
 }
 
 /** Fill the form from the YAML text. false (and errors shown) if the YAML cannot be read as data. */
@@ -195,7 +198,7 @@ export async function refreshClasses() {
 }
 
 // ------------------------------------------------------------------ list
-const SWITCH_HINT = "Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty plik JSON";
+const SWITCH_HINT = "Wyłączony typ nie jest rozpoznawany — takie dokumenty dostają pusty JSON {}";
 
 /** On/off switch of a document type (the list and the header next to the open type use the same markup). */
 function switchHtml(c, readonly) {
@@ -238,30 +241,58 @@ function renderList() {
   if (!ws.classes.length) el.list.innerHTML = `<li class="muted small">Nie ma jeszcze żadnego typu dokumentu.</li>`;
 }
 
-async function toggleEnabled(id, btn) {
+/** Paint the switches of one type (list + header) in place: instant, keeps focus and the slide animation. */
+function paintSwitches(c) {
+  const on = !!c.enabled;
+  for (const sw of document.querySelectorAll(`[data-toggle="${CSS.escape(c.id)}"]`)) {
+    sw.setAttribute("aria-checked", String(on));
+    sw.setAttribute("aria-label", `${c.name || c.id}: ${on ? "rozpoznawany" : "wyłączony"}`);
+    sw.querySelector(".switch-label").textContent = on ? "Rozpoznawany" : "Wyłączony";
+    sw.closest("#class-list li")?.classList.toggle("off", !!c.valid && !on);
+  }
+}
+
+const toggleQueue = new Map(); // id → the last queued on/off request (requests of one type go one after another)
+
+function toggleEnabled(id, btn) {
   const c = ws.classes.find((x) => x.id === id);
   if (!c || ws.busy) return;
   if (ws.hooks.getHealth()?.readonly) return toast("Zmiany zostały wyłączone przez administratora");
-  if (ws.current?.id === id && isDirty()) return toast("Najpierw zapisz albo cofnij zmiany w tym typie dokumentu", 3500);
-  const enabled = !c.enabled;
-  const fromHeader = !!btn.closest("#ws-enabled");
-  btn.disabled = true;
+  if (!toggleQueue.has(id) && ws.current?.id === id && isDirty())
+    return toast("Najpierw zapisz albo cofnij zmiany w tym typie dokumentu", 3500);
+  // optimistic: the switch flips right away, the server (save + config reload) runs behind it;
+  // fast repeated clicks are queued and only the last wanted state is sent
+  const enabled = (c.enabled = !c.enabled);
+  paintSwitches(c);
+  const where = btn.closest("#ws-enabled") ? "#ws-enabled" : "#class-list";
+  const run = (toggleQueue.get(id) || Promise.resolve()).then(() => sendEnabled(c, enabled, where));
+  toggleQueue.set(id, run);
+  run.finally(() => toggleQueue.get(id) === run && toggleQueue.delete(id));
+}
+
+async function sendEnabled(c, enabled, where) {
+  if (c.enabled !== enabled || !ws.classes.includes(c)) return; // a later click (or a list reload) superseded it
+  const id = c.id;
   try {
     const res = await jsonPut(`/api/doc-types/${encodeURIComponent(id)}/enabled`, { enabled });
     if (res && res.ok === false) throw new Error(res.detail || "Nie udało się zmienić ustawienia");
-    await refreshClasses();
-    await ws.hooks.onSaved();
-    if (ws.current?.id === id) {
-      // reload the editor with the file as it is now (only the enabled line changed)
-      const text = await api(`/api/doc-types/${encodeURIComponent(id)}/yaml`);
-      await setEditor(text, { ...ws.current });
-    }
-    toast(enabled ? `„${c.name}” jest znowu rozpoznawany` : `„${c.name}” jest wyłączony — takie dokumenty dostaną pusty plik JSON`, 4000);
-    (fromHeader ? $("#ws-enabled [data-toggle]") : el.list.querySelector(`[data-toggle="${CSS.escape(id)}"]`))?.focus();
+    c.active = res.active;
+    toast(enabled ? `„${c.name}” jest znowu rozpoznawany` : `„${c.name}” jest wyłączony — takie dokumenty dostaną pusty JSON {}`, 4000);
+    // follow-ups in parallel: health (header + class order) and, for the open type, the editor with the new
+    // file (only the enabled line changed — the form must not keep the old value and save it back later)
+    const editor =
+      ws.current?.id === id &&
+      api(`/api/doc-types/${encodeURIComponent(id)}/yaml`).then((text) =>
+        ws.current?.id === id ? setEditor(text, { ...ws.current }) : null,
+      );
+    await Promise.all([ws.hooks.onSaved(), editor]);
   } catch (e) {
-    btn.disabled = false;
     toast(e.message, 5000);
+    await refreshClasses(); // the server's view wins (also over queued clicks: their switch state is gone)
+    renderHeaderSwitch();
   }
+  // setEditor re-renders the list / header: give the keyboard focus back if it was lost with the old button
+  if (document.activeElement === document.body) $(`${where} [data-toggle="${CSS.escape(id)}"]`)?.focus();
 }
 
 // ------------------------------------------------------------------ dictionaries (read-only viewer)
