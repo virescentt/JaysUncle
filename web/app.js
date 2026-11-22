@@ -20,6 +20,7 @@ const state = {
   zoom: 1,
   sub: "json",
   tab: "docs",
+  closedGroups: new Set(), // field groups the user folded in "Pola i źródła" (kept across documents / re-renders)
 };
 let running = 0;
 
@@ -574,7 +575,7 @@ function valueHtml(f) {
   // derived = looked up in a dictionary from another field; raw_value is then that field's value (not document text)
   const derived = f.method === "derived";
   if (f.value === null) {
-    let s = `<span class="null">Nie znaleziono</span>`;
+    let s = `<span class="null" title="Dokument nie zawiera tej informacji — w JSON: null">Brak w dokumencie</span>`;
     const shown = f.raw_value !== null && f.raw_value !== undefined ? esc(trunc(squash(fmtValue(f.raw_value)), 70)) : "";
     if (shown && derived) s += `<span class="rejected">brak pozycji w słowniku dla „${shown}”</span>`;
     else if (shown && f.method) s += `<span class="rejected">pominięto niepewną wartość „${shown}”</span>`;
@@ -645,15 +646,30 @@ function renderFields(p) {
       attached.add(f);
     }
   }
+  // one foldable block per group ("Odwołanie KIO", "Odwołujący — nr 1", …) with "found / all" in its header
+  const stats = new Map();
+  for (const f of p.fields) {
+    if (attached.has(f)) continue;
+    const g = fieldLabel(f.path).group || "";
+    const s = stats.get(g) || { found: 0, all: 0 };
+    s.all += 1;
+    if (f.value !== null) s.found += 1;
+    stats.set(g, s);
+  }
   let html = "";
   let group = null;
   p.fields.forEach((f, i) => {
     if (attached.has(f) || (onlyFilled && f.value === null)) return;
-    const { group: g, label } = fieldLabel(f.path);
+    const { group: gRaw, label } = fieldLabel(f.path);
+    const g = gRaw || "";
     if (g !== group) {
-      if (group !== null) html += `</ul>`;
+      if (group !== null) html += `</ul></details>`;
       group = g;
-      html += `${g ? `<h3 class="field-group">${esc(g)}</h3>` : ""}<ul class="fields">`;
+      const s = stats.get(g);
+      html += `<details class="fgroup" data-group="${esc(g)}"${state.closedGroups.has(g) ? "" : " open"}>
+        <summary class="field-group"><span class="fgroup-name">${esc(g || "Dane dokumentu")}</span>
+          <span class="fgroup-count" title="znalezione / wszystkie pola">${s.found}/${s.all}</span></summary>
+        <ul class="fields">`;
     }
     const derived = (derivedOf.get(f.path) || []).filter((d) => d.value !== null);
     const extra = derived.map((d) => ` — ${esc(fmtValue(d.value))}`).join("");
@@ -661,7 +677,7 @@ function renderFields(p) {
     if (f.value === null && (f.raw_value === null || f.raw_value === undefined)) {
       // genuinely not found: one quiet line, no details
       html += `<li class="field empty" data-idx="${i}">
-        <div class="field-quiet"><span class="field-label">${esc(label)}</span><span class="null">nie znaleziono</span></div>
+        <div class="field-quiet"><span class="field-label">${esc(label)}</span><span class="null" title="Dokument nie zawiera tej informacji — w JSON: null">brak w dokumencie</span></div>
       </li>`;
       return;
     }
@@ -682,7 +698,7 @@ function renderFields(p) {
       ${moreHtml(f, derived)}
     </li>`;
   });
-  if (group !== null) html += `</ul>`;
+  if (group !== null) html += `</ul></details>`;
   panel.innerHTML = html || `<div class="panel-note">Nie znaleziono żadnej wartości — odznacz „Tylko znalezione”, aby zobaczyć wszystkie pola.</div>`;
 }
 
@@ -698,6 +714,8 @@ function selectField(i, { scrollPage = true, scrollRow = false } = {}) {
   const p = currentPayload();
   if (!p) return;
   state.activeField = i;
+  const group = $(`#fields-panel li.field[data-idx="${i}"]`)?.closest("details.fgroup");
+  if (group && !group.open) group.open = true;
   for (const li of $$("#fields-panel li.field")) {
     const on = +li.dataset.idx === i;
     li.classList.toggle("active", on);
@@ -723,6 +741,17 @@ function selectField(i, { scrollPage = true, scrollRow = false } = {}) {
 }
 
 function initFields() {
+  // remember folded groups ("toggle" does not bubble → capture)
+  $("#fields-panel").addEventListener(
+    "toggle",
+    (e) => {
+      const d = e.target;
+      if (!d.classList?.contains("fgroup")) return;
+      if (d.open) state.closedGroups.delete(d.dataset.group);
+      else state.closedGroups.add(d.dataset.group);
+    },
+    true,
+  );
   const panel = $("#fields-panel");
   panel.addEventListener("click", (e) => {
     const btn = e.target.closest(".field-main");

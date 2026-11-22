@@ -721,7 +721,7 @@ function renderTest(p) {
     .map((f) => {
       const { group, label } = fieldLabel(f.path);
       return `<tr><td>${group ? `<span class="muted">${esc(group)} › </span>` : ""}${esc(label)}</td>
-        <td class="v">${f.value === null ? '<span class="muted">nie znaleziono</span>' : esc(trunc(fmtValue(f.value), 160))}</td>
+        <td class="v">${f.value === null ? '<span class="muted">brak w dokumencie</span>' : esc(trunc(fmtValue(f.value), 160))}</td>
         <td>${f.value !== null && f.method ? confWord(f.confidence) : ""}</td></tr>`;
     })
     .join("");
