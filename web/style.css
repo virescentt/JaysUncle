@@ -612,7 +612,10 @@ details.fgroup > summary:hover { background: var(--surface-3); }
 .field-main > * { min-width: 0; }
 .field:hover { background: var(--surface-2); }
 .field:has(.field-main:active) { background: var(--surface-3); }
-.field.empty:hover, .field.derived:hover { background: none; }
+.field.derived:hover { background: none; }
+/* "brak w dokumencie" (shown when "Tylko znalezione" is off): a light yellow tint */
+.field.empty, .field.empty:hover { background: var(--warn-soft); }
+.field.empty:has(.field-main):hover { background: color-mix(in srgb, var(--warn-soft) 80%, var(--warn) 20%); }
 .field-main:focus-visible { outline-offset: -3px; }
 .field.active { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
 .field.active:hover { background: var(--accent-soft); }
@@ -640,7 +643,7 @@ details.fgroup > summary:hover { background: var(--surface-3); }
 .field-quiet { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); padding: var(--s2) var(--s4); font-size: var(--fs-sm); }
 .field-quiet .field-label { font-weight: 500; }
 .field-quiet .null { color: var(--muted); font-size: var(--fs-xs); }
-.field.empty .field-quiet { opacity: 0.8; }
+.field.empty .field-quiet .null { color: var(--warn); font-weight: 600; }
 .val-extra { font-weight: 400; }
 .from-dict { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; white-space: nowrap; }
 .panel-note { padding: var(--s4) var(--s5); font-size: var(--fs-sm); color: var(--muted); }
