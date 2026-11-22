@@ -4,7 +4,7 @@
 
 Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
 
-> Status: **działa** — potok PDF → JSON, OCR skanów, panel webowy, 525 testów. Domyślnie **tryb reguł** (bez LLM, bez klucza API, offline) — najlepszy zmierzony wynik; LLM opcjonalnie ([docs/ARCHITEKTURA.md → LLM](docs/ARCHITEKTURA.md#llm)).
+> Status: **działa** — potok PDF → JSON, OCR skanów, panel webowy, 532 testy. Wbudowane typy dokumentów działają na **regułach** (bez LLM, offline) — najlepszy zmierzony wynik; **LLM (Qwen3.5-9B, OVHcloud, serwery w UE)** odczytuje dane nowych typów dokumentów dodanych w panelu ([docs/ARCHITEKTURA.md → LLM](docs/ARCHITEKTURA.md#llm)).
 
 ---
 
@@ -34,6 +34,7 @@ Pomiar z 21.11.2026 w trybie reguł (bez LLM), metryka F1 po polach ([`evaluatio
 
 - Skany wg typu: odwołanie 0.989 · pełnomocnictwo 0.987 · potwierdzenie przelewu 0.878.
 - OCR (lokalny, bez GPU): odnalezione wartości referencji na skanach 0.83 → **0.955** po przejściu na RapidOCR PP-OCRv6 i korektach.
+- Z LLM (Qwen3.5-9B, bez „myślenia”): hybryda na tych samych 30 skanach **0.955** (LLM podnosi kompletność, ale wypełnia pola puste w referencji), sam LLM na 10 sprawach **0.931**. Dlatego wbudowane typy działają na regułach, a LLM odczytuje nowe typy dokumentów.
 - Szczegóły, lista pozostałych błędów i sposób odtworzenia: [docs/RAPORT_JAKOSCI.md](docs/RAPORT_JAKOSCI.md). Architektura: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
 
 ## Architektura w skrócie
@@ -47,7 +48,7 @@ PDF ─► INGEST (pdfplumber; skan → lokalny OCR RapidOCR PP-OCRv6)
 ```
 
 - **Klasa dokumentu = jeden plik YAML** w `config/doc_types/` (sygnały rozpoznawania, struktura wyniku, opisy pól, wskazówki ekstrakcji, normalizacja). **Nowa klasa nie wymaga zmian w kodzie** — zob. [docs/NOWA_KLASA_DOKUMENTU.md](docs/NOWA_KLASA_DOKUMENTU.md).
-- Tryby ekstrakcji (`config/settings.yaml` lub `EXTRACTION_MODE` w `.env`): `rules` (bez LLM, offline) · `llm` · `hybrid` (domyślny).
+- Tryby ekstrakcji (`config/settings.yaml` lub `EXTRACTION_MODE` w `.env`): `rules` (domyślny; bez LLM, offline) · `llm` · `hybrid`. Każdy typ dokumentu może mieć własny tryb (`extraction.mode` w jego YAML) — typy dodane w panelu używają `llm`.
 - LLM: **wyłącznie modele open-source** przez API zgodne z OpenAI. Aplikacja działa na laptopie biurowym (16 GB RAM, Intel i7, bez GPU) — zgodnie z wymaganiami organizatora LLM jest wywoływany przez API dostawcy z serwerami w UE/EOG (klucz w `.env`, nie w repozytorium). Lokalnie można też użyć Ollama / vLLM / llama.cpp.
 - Model LLM, dostawca (OVHcloud AI Endpoints, serwery w UE) i polityka hybrydowa (LLM uzupełnia tylko pola puste po regułach): [docs/ARCHITEKTURA.md → LLM](docs/ARCHITEKTURA.md#llm).
 - Pełny opis potoku, modułów, OCR i bezpieczeństwa: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
@@ -58,10 +59,7 @@ PDF ─► INGEST (pdfplumber; skan → lokalny OCR RapidOCR PP-OCRv6)
 - **Windows, macOS lub Linux** — obsługiwane wszystkie (skrypty `.bat` dla Windows, `.sh` dla macOS/Linux).
 - **Python 3.13+** — [python.org/downloads](https://www.python.org/downloads/) (Windows: przy instalacji zaznacz „Add python.exe to PATH”). Jeśli go brak, `start.bat` / `start.sh` wyświetli komunikat z linkiem i zakończy działanie, niczego nie instalując.
 - **Internet** — do wywołań API LLM (OVHcloud AI Endpoints, serwery w UE) i do instalacji zależności przy pierwszym uruchomieniu. Bez internetu lub bez klucza API aplikacja nadal działa — w trybie reguł (bez LLM).
-- OCR skanów działa od razu po instalacji (RapidOCR, bez programów systemowych). Opcjonalnie **Tesseract z językiem polskim**:
-  - macOS: `brew install tesseract tesseract-lang`
-  - Ubuntu/Debian: `sudo apt install tesseract-ocr tesseract-ocr-pol`
-  - Windows: [instalator UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) (zaznacz język *Polish*)
+- OCR skanów działa od razu po instalacji (RapidOCR, bez programów systemowych). Tesseract jest opcjonalny (`OCR_ENGINE=tesseract`, wymaga zainstalowanego Tesseracta z językiem polskim).
 
 ## Instalacja
 
