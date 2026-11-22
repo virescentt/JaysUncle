@@ -7,7 +7,7 @@
 
 x-app: &app
   build: .
-  image: odwolania2json:latest
+  image: jaysuncle:latest
   env_file:
     - path: .env
       required: false

@@ -348,7 +348,7 @@ def create_app(
 
     # Swagger UI / ReDoc load their assets from a CDN → disabled (on-premise); the schema stays available.
     app = FastAPI(
-        title="Odwołania2JSON",
+        title="JaysUncle",
         version=__version__,
         lifespan=lifespan,
         docs_url=None,

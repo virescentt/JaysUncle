@@ -1,6 +1,6 @@
-# Odwołania2JSON
+# JaysUncle
 
-Zamiana dokumentów postępowania odwoławczego przed KIO (odwołanie, pełnomocnictwo, potwierdzenie przelewu — PDF, także skany) na kanoniczny model JSON. Zadanie konkursowe Urzędu Zamówień Publicznych, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
+Zamiana dokumentów postępowania odwoławczego przed KIO (odwołanie, pełnomocnictwo, potwierdzenie przelewu — PDF, także skany) na kanoniczny model JSON. Zadanie konkursowe Urzędu Zamówień Publicznych „Odwołania2JSON”, HackNation 2026 ([opis i dane organizatora](https://github.com/Urzad-Zamowien-Publicznych/hacknation-2026)).
 
 ## Dokumentacja
 
@@ -53,4 +53,4 @@ Bez klucza lub bez internetu aplikacja wypisuje jeden komunikat i działa w tryb
 
 ## Zespół
 
-Zespół *zschie* — HackNation 2026.
+Zespół *Wanna Pizza* — HackNation 2026.
