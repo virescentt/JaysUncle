@@ -1,0 +1,17 @@
+# Opcjonalne silniki OCR — NIE są potrzebne do działania aplikacji.
+# Domyślny silnik (RapidOCR + modele PP-OCRv6 small dołączone do paczki pip) jest w requirements.txt.
+#
+#   pip install -r requirements-ocr.txt        →  ocr_engine: easyocr  (config/settings.yaml lub OCR_ENGINE=easyocr)
+#
+# Porównanie (scripts/ocr_benchmark.py, 9 prawdziwych skanów organizatora, 76 wartości z referencji):
+#   EasyOCR 1.7.2 (lang pl): odnalezione wartości 0.816 · RapidOCR PP-OCRv6 small (domyślny): 0.974,
+#   EasyOCR ~3× wolniejszy na CPU. Instalacja +≈900 MB (torch), modele ≈95 MB pobierane przy pierwszym
+#   uruchomieniu (~/.EasyOCR). Działa na Python 3.13 — zostawiony jako alternatywa, nie jako domyślny.
+-r requirements.txt
+
+easyocr==1.7.2              # Apache-2.0
+torch==2.15.0               # BSD-3 — wersja CPU (Windows/macOS: domyślna z PyPI)
+torchvision==0.29.2         # BSD-3
+
+# Tesseract (ocr_engine: tesseract) wymaga binarki systemowej + języka 'pol' — patrz README (pytesseract jest w
+# requirements.txt).

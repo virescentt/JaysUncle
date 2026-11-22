@@ -68,12 +68,12 @@ def main() -> None:
               f"spraw: {len(cases)} → {out}")  # fmt: skip
         t0 = time.perf_counter()
         n = 0
-        for case in cases:
-            for pdf in find_pdfs(args.data / case):
-                res = pipe.process_file(pdf)
-                write_result(output_path_for(pdf, args.data, pred_root), res.data, settings.output.unknown_output)
-                write_json(output_path_for(pdf, args.data, out / "traces", ".trace.json"), res.to_trace())
-                n += 1
+        pdfs = [pdf for case in cases for pdf in find_pdfs(args.data / case)]
+        for res in pipe.process_many(pdfs):
+            pdf = res.source
+            write_result(output_path_for(pdf, args.data, pred_root), res.data, settings.output.unknown_output)
+            write_json(output_path_for(pdf, args.data, out / "traces", ".trace.json"), res.to_trace())
+            n += 1
         print(f"Przetworzono {n} PDF w {time.perf_counter() - t0:.1f}s")
 
     rep = score_dirs(pred_root, args.data, cases=cases, lenient=args.lenient, fuzzy=args.fuzzy)

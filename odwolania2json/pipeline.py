@@ -2,14 +2,15 @@
 
 pipe = Pipeline()                                   # settings + config/ + optional LLM client
 result = pipe.process_file(Path("input/case1/x.pdf"))
-results = pipe.run(Path("input"), Path("output"))   # whole tree, mirrored output
+results = pipe.run(Path("input"), Path("output"))   # whole tree, mirrored output, documents in parallel
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from odwolania2json.classify import classify
@@ -34,7 +35,10 @@ class Pipeline:
         self.settings = settings or Settings.load()
         self.registry = registry or load_registry(self.settings.config_dir)
         self.llm = None
-        if self.settings.extraction.mode != "rules":  # rules = fully offline, no LLM at all
+        needs_llm = self.settings.extraction.mode != "rules" or any(
+            dt.extraction.mode in ("llm", "hybrid") for dt in self.registry.doc_types.values()
+        )
+        if needs_llm:  # rules everywhere = fully offline, no LLM at all
             self.llm = LLMClient.from_settings(self.settings.llm)
 
     def process_file(self, pdf: Path) -> DocumentResult:
@@ -52,6 +56,7 @@ class Pipeline:
             pages=len(doc.pages),
             scanned=doc.is_scanned,
             timings=timings,
+            document=doc,
         )
         if cls.doc_type is None:
             return result
@@ -67,6 +72,29 @@ class Pipeline:
         result.errors += errors
         return result
 
+    def safe_process(self, pdf: Path) -> DocumentResult:
+        """process_file that never raises — one broken PDF must not stop the batch."""
+        try:
+            return self.process_file(pdf)
+        except Exception as e:  # noqa: BLE001
+            log.exception("Failed to process %s", pdf)
+            res = DocumentResult(source=Path(pdf), classification=ClassificationResult(None, 0.0, "none"))
+            res.errors.append(f"{type(e).__name__}: {e}")
+            return res
+
+    def process_many(self, pdfs: Iterable[Path], workers: int | None = None) -> Iterator[DocumentResult]:
+        """Process documents in parallel threads (settings.pipeline.workers); yields results as they finish."""
+        pdfs = list(pdfs)
+        workers = max(1, workers or self.settings.pipeline.workers)
+        if workers == 1 or len(pdfs) <= 1:
+            for pdf in pdfs:
+                yield self.safe_process(pdf)
+            return
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="doc") as pool:
+            futures = [pool.submit(self.safe_process, pdf) for pdf in pdfs]
+            for fut in as_completed(futures):
+                yield fut.result()
+
     def run(
         self,
         input_root: Path,
@@ -78,19 +106,17 @@ class Pipeline:
         out_cfg = self.settings.output
         if traces_root is None and out_cfg.write_traces:
             traces_root = Path(out_cfg.traces_dir)
+        pdfs = find_pdfs(input_root)[:limit]
+        order = {p: i for i, p in enumerate(pdfs)}
         results: list[DocumentResult] = []
-        for pdf in find_pdfs(input_root)[:limit]:
-            try:
-                res = self.process_file(pdf)
-            except Exception as e:  # noqa: BLE001 — one broken PDF must not stop the batch
-                log.exception("Failed to process %s", pdf)
-                res = DocumentResult(source=pdf, classification=ClassificationResult(None, 0.0, "none"))
-                res.errors.append(f"{type(e).__name__}: {e}")
-            out_path = output_path_for(pdf, input_root, output_root)
-            write_result(out_path, res.data, out_cfg.unknown_output, out_cfg.indent)
+        for res in self.process_many(pdfs):
+            pdf = res.source
+            write_result(
+                output_path_for(pdf, input_root, output_root), res.data, out_cfg.unknown_output, out_cfg.indent
+            )
             if traces_root is not None:
                 write_json(output_path_for(pdf, input_root, traces_root, ".trace.json"), res.to_trace())
             results.append(res)
             if on_result:
                 on_result(res)
-        return results
+        return sorted(results, key=lambda r: order.get(r.source, 0))

@@ -32,9 +32,6 @@ output/*
 .DS_Store
 Thumbs.db
 .idea/
-# VS Code: wspólne zadania i rekomendowane rozszerzenia commitujemy, resztę (prywatne ustawienia) nie
-.vscode/*
-!.vscode/tasks.json
-!.vscode/extensions.json
+.vscode/
 *.swp
 *.log

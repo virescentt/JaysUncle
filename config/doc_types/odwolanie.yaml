@@ -59,20 +59,43 @@ output:
         scope: first_page
         case_sensitive: true
         patterns:
-          - '^\s*[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+){0,2},?\s+(?:dnia\s+)?(?P<value>\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4})'
+          # „Wpłynęło dnia …” (pieczęć), „Termin 12.03.2026” — nie miejscowość; data także ISO („Kraków, 2026-03-05”)
+          - '^\s*(?!(?:Wpłynęł\w*|Data|Termin|Godz\w*|Sygn\w*|Znak|Załącznik\w*|Strona)\b)[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+){0,2},?\s*(?:dnia\s+|dn\.\s*)?(?P<value>\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4})'
         normalize: [date_pl]
       czynnosc_dzien:
         type: date
         description: >-
           Data czynności uruchamiającej bieg terminu odwołania dla PIERWSZEGO zarzutu (ISO YYYY-MM-DD).
           Jeśli brak wiarygodnej daty dla pierwszego zarzutu, zwróć null.
+        confidence: 0.6   # pole trudne — reguły dają kandydata, LLM może go nadpisać
+        patterns:   # „Informacja o zaskarżonej czynności została przekazana … w dniu 01.04.2026 r.”
+          - 'zaskarżon\w*\s+czynnoś\w*[^.;]{0,80}?\bw\s+dniu\s+(?P<value>\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{1,2}\s+[a-ząćęłńóśźż]+\s+\d{4})'
+        strategy: date          # pierwsza data w tekście pierwszego zarzutu
+        # params: tekst pierwszego zarzutu: po najwcześniejszym z „anchors”, przed uzasadnieniem
+        params: &pierwszy_zarzut
+          end: ['^\s*UZASADNIENIE', '^\s*Uzasadnienie\s*$']
+          # first_item: lista „1)” po kotwicy kończącej linię; tekst w tej samej linii („polegającej na wyborze …”)
+          # to już opis czynności. „z naruszeniem” zaczyna przepisy (inne daty, „poprzez zaniechanie …”).
+          anchors:
+            - { at: 'polegając\w*\s+na\s*:?', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';', '^\s*Zarzut', 'z\s+naruszeniem'] }
+            - { at: 'wnosz\w*\s+odwołanie\s+(?:wobec|od)\s*:', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';', 'z\s+naruszeniem'] }
+            - { at: '^\s*Zamawiający\s+w\s+dniu\s+', until: ['\.[ \t]*\n(?![ \t]*(?-i:[a-ząćęłńóśźż]))', '\.\s+(?=(?-i:[A-ZŁŚŻŹĆŃÓ]))'] }   # zdanie: do kropki przed wielką literą / końcem akapitu („2026 r.⏎nie wykluczył” to nie koniec)
+            - { at: 'Zarzut\w*\s+(?:nr\s*)?1\b', until: ['Zarzut\w*\s+(?:nr\s*)?2\b', ';'] }
+            - { at: 'zarzuca\w*\s+(?:Zamawiającemu\s+)?(?:naruszenie\s*)?:', first_item: '^\s*1\s*[.)]\s*', until: ['^\s*2\s*[.)]', ';'] }
+          skip_preceded_by: ['ustaw\w*\s+z\s+(?:dnia\s+)?$']   # data ustawy Pzp („ustawy z dnia 11 września 2019 r.”) to nie data czynności
         normalize: [date_pl]
       czynnosc_powod_id:
         type: integer
         dictionary: czynnosc_powod
         description: >-
           Identyfikator powodu odwołania jako liczba całkowita 1-12 (bez zera wiodącego), ustalany WYŁĄCZNIE
-          na podstawie pierwszego zarzutu.
+          na podstawie pierwszego zarzutu. Decyduje CZYNNOŚĆ Zamawiającego, którą zaskarżono (co zrobił albo
+          czego zaniechał: odrzucił / nie odrzucił oferty, wybrał ofertę, wykluczył / nie wykluczył wykonawcy,
+          unieważnił postępowanie…), a NIE przedmiot zamówienia. 11 (OPZ) tylko wtedy, gdy zarzut dotyczy
+          samej treści opisu przedmiotu zamówienia.
+        confidence: 0.6
+        strategy: dictionary    # słowa kluczowe ze słownika w tekście pierwszego zarzutu
+        params: *pierwszy_zarzut
       czynnosc_opis:
         type: string
         derived_from: czynnosc_powod_id
@@ -85,7 +108,7 @@ output:
         scope: first_page
         case_sensitive: true
         patterns:
-          - '^\s*(?P<value>[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+){0,2}),?\s+(?:dnia\s+)?\d{1,2}(?:[./-]\d{1,2}[./-]\d{4}|\s+[a-ząćęłńóśźż]+\s+\d{4})'
+          - '^\s*(?!(?:Wpłynęł\w*|Data|Termin|Godz\w*|Sygn\w*|Znak|Załącznik\w*|Strona)\b)(?P<value>[A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+(?:[ -][A-ZŁŚŻŹĆŃÓ][a-ząćęłńóśźż]+){0,2}),?\s*(?:dnia\s+|dn\.\s*)?(?:\d{1,2}(?:[./-]\d{1,2}[./-]\d{4}|\s+[a-ząćęłńóśźż]+\s+\d{4})|\d{4}-\d{1,2}-\d{1,2})'
         normalize: [strip]
         ground: fuzzy
 
@@ -94,16 +117,19 @@ output:
     min_items: 1
     max_items: 1
     description: Odwołujący (wykonawca wnoszący odwołanie). Przy konsorcjum — tylko Lider konsorcjum.
-    section:
-      start: 'Odwołując\w*\s*:'
-      end: '(Zamawiając\w*\s*(:|\()|Wykonawca wybrany|Przystępując\w*\s*:|dotyczy\s*:|^\s*ODWOŁANIE\s*$)'
+    scope: head
+    section:          # koniec bloku: następna strona postępowania (zamawiający, wykonawca wybrany, przystępujący, uczestnik)
+      start: '^\s*(?:Odwołując\w*|Wykonawca\s+wnosząc\w*\s+odwołanie)\s*(?::|[ \t]*$)'
+      end: '(^\s*Zamawiając\w*\s*(:|\(|[ \t]*$)|Wykonawca wybrany|^\s*Wykonawc\w*,?\s+(?:wybran\w*|któr\w*\s+ofert\w*)|^\s*Wybran\w*\s+wykonawc\w*|^\s*(?:Przystępując\w*|Uczestni\w*)\b|Przystępując\w*\s*:|^\s*dotyczy\s*:?|^\s*ODWOŁANIE\s*$)'
+    item_split: '^\s*\d\s*\)\s*'      # konsorcjum: „1) … (Lider Konsorcjum)”, „2) …” (zaraz po nagłówku bloku)
+    item_prefer: 'lider'                # max_items: 1 → zostaje Lider konsorcjum
     items:
       type: object
       properties:
         krs:
           type: string
           description: KRS Odwołującego lub Lidera konsorcjum podmiotów Odwołujących (jeśli występuje).
-          patterns: ['KRS[:\s]*(?P<value>\d{10})']
+          patterns: ['KRS[\s:;.]*(?:nr\s*)?(?P<value>\d{10})(?!\d)']
           normalize: [digits_only]
           validate: [krs]
           ground: digits
@@ -112,19 +138,25 @@ output:
           description: >-
             Pełna nazwa podmiotu opisanego jako Odwołujący (wykonawca wnoszący odwołanie). Jeśli występuje
             konsorcjum, podaj nazwę Lidera konsorcjum.
+          patterns: ['pod\s+firmą\s*:?\s*["„]?(?P<value>[^\n,"”]{3,120})']   # przedsiębiorca (CEIDG): nazwa firmy
+          strategy: first_line   # pierwsza linia bloku „Odwołujący:” (albo elementu konsorcjum)
+          params:
+            skip: ['^\s*Konsorcj\w*\s+(?:wykonawc|firm|w\s+składzie)']
+            stop: ['(?:adw\.|adwokat|r\.\s*pr\.|radc\w*\s+prawn|mec\.)']   # pełnomocnik z tytułem to nie nazwa Odwołującego
+            cut: ['\s*\(\s*(?:lider|partner|dalej)', ',\s*(?:ul\.|al\.|pl\.|os\.)', '\s+z\s+siedzib\w*']
           normalize: [strip_quotes, collapse_whitespace]
           ground: fuzzy
         nip:
           type: string
           description: NIP Odwołującego lub Lidera konsorcjum (jeśli występuje), 10 cyfr.
-          patterns: ['NIP[:\s]*(?P<value>\d{3}[- ]?\d{3}[- ]?\d{2}[- ]?\d{2}|\d{10})']
+          patterns: ['NIP[\s:;.]*(?:PL)?\s*(?P<value>\d(?:[ -]?\d){9})(?![\d-])']
           normalize: [digits_only]
           validate: [nip]
           ground: digits
         regon:
           type: string
           description: REGON Odwołującego lub Lidera konsorcjum (jeśli występuje), 9 lub 14 cyfr.
-          patterns: ['REGON[:\s]*(?P<value>\d{14}|\d{9})']
+          patterns: ['REGON[\s:;.]*(?P<value>\d{14}|\d{9})(?!\d)']
           normalize: [digits_only]
           validate: [regon]
           ground: digits
@@ -132,23 +164,43 @@ output:
           type: integer
           enum: [0, 1]
           description: 1 — odwołanie wnosi pełnomocnik, 0 — nie.
+          strategy: flag          # 1, gdy w bloku Odwołującego jest reprezentacja przez pełnomocnika
+          params:
+            # „reprezentowana przez Prezesa Zarządu …” (zarząd, nie pełnomocnik) i sam „adres do korespondencji”
+            # nie są dowodem; OCR: „petnomocnika”, „pełnonocnika”
+            patterns: ['reprezentowan\w*\s*przez[\s.:]*(?:p\w{0,2}no|adw|r\.?\s*pr|radc|adwokat|mec|kancelari)', 'pe[lłt]no[mn]ocni\w+']
+            fallback: true        # przy konsorcjum: cały blok „Odwołujący”, nie tylko element Lidera
+            present: 1
+            absent: 0
+            absent_patterns: ['w\s*imieniu\s+własnym']   # „Działając w imieniu własnym” → 0
+            absent_confidence: 0.45                          # brak śladów pełnomocnika → słaba hipoteza 0
         pelnomocnik:
           type: object
+          section:                # od „reprezentowany przez (pełnomocnika / adw. / r. pr.)” / „Pełnomocnik:” do końca bloku
+            start: 'reprezentowan\w*\s*przez[\s.:]*(?=p\w{0,2}no|adw|r\.?\s*pr|radc|adwokat|mec|kancelari)|^\s*pe[lłt]no[mn]ocni\w*(?:\s+Odwołującego)?\s*:'
           properties:
             imie_nazwisko:
               type: string
               description: Imię i nazwisko (pierwszego) pełnomocnika Odwołującego, w mianowniku, bez tytułów.
+              strategy: persons   # pierwsza osoba z listy po „reprezentowany przez (pełnomocnika):”
+              params:
+                until: ['adres\w*', '\btel\b', 'e-?mail', '^\s*Zamawiając', '\bul\.', '\bKRS\b', '\bNIP\b']
+                max_chars: 300
               normalize: [person_name]
               ground: fuzzy
             nazwa:
               type: string
               description: Nazwa podmiotu zatrudniającego pełnomocnika (np. kancelarii).
+              section: { start: 'adres\w*\s+do\s+korespondenc\w*\s*:?' }
+              strategy: first_line   # „adres do korespondencji: Kancelaria …, ul. …”
+              params:
+                cut: [',\s*(?:ul\.|al\.|pl\.|os\.)', ',?\s*\d{2}\s?-\s?\d{3}\b']
               normalize: [strip_quotes, collapse_whitespace]
               ground: fuzzy
             mail:
               type: string
               description: Adres e-mail kontaktowy do pełnomocnika.
-              patterns: ['(?P<value>[\w.+-]+@[\w-]+(?:\.[\w-]+)+)']
+              patterns: ['(?P<value>[\w.+-]+\s?@\s?[\w-]+(?:\s?\.\s?[\w-]+)+)']
               normalize: [email]
               ground: exact
 
@@ -156,36 +208,40 @@ output:
     type: array
     min_items: 1
     description: Zamawiający (jeden lub więcej, gdy postępowanie prowadzą wspólnie).
+    scope: head
     section:
-      start: 'Zamawiając\w*\s*(:|\()'
-      end: '(Odwołując\w*\s*:|Wykonawca wybrany|Przystępując\w*\s*:|dotyczy\s*:|^\s*ODWOŁANIE\s*$)'
-    item_split: '(?m)^\s*\d\)\s*Zamawiając\w*'
+      start: '^\s*Zamawiając\w*\s*(:|\(|[ \t]*$)'
+      end: '(^\s*Odwołując\w*\s*(:|[ \t]*$)|Wykonawca wybrany|^\s*Wykonawc\w*,?\s+(?:wybran\w*|któr\w*\s+ofert\w*)|^\s*Wybran\w*\s+wykonawc\w*|^\s*(?:Przystępując\w*|Uczestni\w*)\b|Przystępując\w*\s*:|^\s*dotyczy\s*:?|^\s*ODWOŁANIE\s*$)'
+    item_split: '^\s*\d\s*\)\s*'      # kilku zamawiających: „1) …”, „2) …”
     items:
       type: object
       properties:
         krs:
           type: string
           description: KRS Zamawiającego (jeśli jawnie podany przy Zamawiającym).
-          patterns: ['KRS[:\s]*(?P<value>\d{10})']
+          patterns: ['KRS[\s:;.]*(?:nr\s*)?(?P<value>\d{10})(?!\d)']
           normalize: [digits_only]
           validate: [krs]
           ground: digits
         nazwa:
           type: string
           description: Pełna nazwa podmiotu opisanego jako Zamawiający.
+          strategy: first_line   # pierwsza linia bloku „Zamawiający:” (linie-etykiety „… – Lider:” są pomijane)
+          params:
+            cut: ['\s*\(\s*(?:lider|partner|dalej)', ',\s*(?:ul\.|al\.|pl\.|os\.)', '\s+z\s+siedzib\w*', '\s+[-–]\s+Zamawiaj']
           normalize: [strip_quotes, collapse_whitespace]
           ground: fuzzy
         nip:
           type: string
           description: NIP Zamawiającego (jeśli jawnie podany przy Zamawiającym).
-          patterns: ['NIP[:\s]*(?P<value>\d{3}[- ]?\d{3}[- ]?\d{2}[- ]?\d{2}|\d{10})']
+          patterns: ['NIP[\s:;.]*(?:PL)?\s*(?P<value>\d(?:[ -]?\d){9})(?![\d-])']
           normalize: [digits_only]
           validate: [nip]
           ground: digits
         regon:
           type: string
           description: REGON Zamawiającego (jeśli jawnie podany przy Zamawiającym).
-          patterns: ['REGON[:\s]*(?P<value>\d{14}|\d{9})']
+          patterns: ['REGON[\s:;.]*(?P<value>\d{14}|\d{9})(?!\d)']
           normalize: [digits_only]
           validate: [regon]
           ground: digits
@@ -193,11 +249,15 @@ output:
           type: integer
           enum: [0, 1]
           description: >-
-            null — jeśli zamawiający jest jeden; 1 — jeśli zamawiających jest więcej i ten jest oznaczony jako
-            prowadzący postępowanie / lider; 0 — jeśli zamawiających jest więcej i ten nie jest prowadzącym.
+            Tylko gdy w dokumencie jest KILKU zamawiających (zamówienie wspólne): 1 — ten jest oznaczony jako
+            prowadzący postępowanie / lider, 0 — pozostali. Gdy zamawiający jest JEDEN, zawsze null (nie 1).
+          strategy: item_flag     # jeden zamawiający → brak wartości; kilku → 1 dla oznaczonego, 0 dla pozostałych
+          params:
+            pattern: 'prowadząc\w*\s+postępowani\w*|\blider\w*'
 
   ZamowieniePubliczne:
     type: object
+    scope: head      # dane postępowania są w nagłówku; dalej (uzasadnienie) bywają numery INNYCH postępowań
     properties:
       numer_bzp:
         type: string
@@ -213,9 +273,10 @@ output:
           Numer referencyjny / nr postępowania / numer wewnętrzny (ID po etykiecie), np. 'ZP.039.2025',
           'DZP.260.11.2025', 'V.ROZ.2710.125.2025', 'ZSCKR/822/2025'.
         labels: [nr referencyjny, numer referencyjny, znak sprawy, nr sprawy, numer sprawy, nr postępowania, numer postępowania]
-        patterns:
-          - '(?:nr|numer)\s+(?:referencyjn\w*|postępowania|sprawy)(?:\s+sprawy)?\s*:?\s*(?P<value>[A-Z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
-          - 'postępowanie\s+nr\s+(?P<value>[A-Z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+        value_pattern: '(?=[A-Z0-9./_-]*\d)[A-Z0-9][A-Za-z0-9./_-]*[A-Za-z0-9]'
+        patterns:   # wartość musi zawierać cyfrę: „Numer referencyjny postępowania: ZP.1” nie daje „postępowania”
+          - '(?:nr|numer)\s*(?:referencyjn\w*|postępowania|sprawy)(?:\s+sprawy)?\s*:?\s*(?P<value>(?=[A-Za-z./_-]*\d)[A-Z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
+          - 'postępowanie\s+nr\s+(?P<value>(?=[A-Za-z./_-]*\d)[A-Z0-9][A-Za-z0-9./\-_]*[A-Za-z0-9])'
         normalize: [strip]
         ground: exact
       numer_ted:
@@ -224,12 +285,15 @@ output:
           Numer TED (jeśli występuje), zwykle 'NNNNNN-YYYY' (np. '363730-2025'). Może wystąpić jako
           'YYYY/S ###-NNNNNN' — zapisz jako 'NNNNNN-YYYY'.
         patterns:
-          - '(?:TED|Dz\.?\s*U\.?\s*UE|Dzienniku Urzędowym Unii Europejskiej)[^\n]{0,80}?(?P<value>\d{4}\s*/\s*S\s*\d{1,3}\s*-\s*\d{5,7}|\d{5,7}\s*-\s*\d{4})'
+          - '(?:\bTED\b|Dz\.?\s*U\.?\s*UE|Dzienni\w*\s*Urz\w*\s*(?:Unii\s*Europejskiej|UE))[\s\S]{0,80}?(?P<value>\d{4}\s*/\s*S\s*\d{1,3}\s*-\s*\d{5,8}|\d{5,8}\s*-\s*\d{4})(?!\d)'
         normalize: [ted]
         ground: digits
       tytul:
         type: string
         description: Tytuł (nazwa) zamówienia lub postępowania, jeśli występuje w dokumencie — bez cudzysłowów.
-        patterns: ['pn\.?\s*:?\s*[„"“](?P<value>[^”"“]{5,500})[”"“]']
+        patterns:   # OCR gubi cudzysłów otwierający („ → brak / „,”) — wystarczy zamykający
+          # tytuł nie przechodzi przez „, nr …”, „nr referencyjny”, „ogłoszenie o zamówieniu”, „(dalej” ani nagłówek
+          # ODWOŁANIE — bez cudzysłowów (OCR) inaczej sięgałby do najbliższego cudzysłowu w treści pisma
+          - '(?:\bpn\.?|pod\s+nazwą|o\s+nazwie)\s*:?\s*[„"“,]?\s*(?P<value>(?:(?!,\s*(?:nr|numer|znak)\b|\b(?:nr|numer)\s+(?:referencyjn|postępowania|sprawy)|ogłoszeni\w*\s+(?:o\s+zamówieniu|nr\b)|\(\s*dalej|\n\s*ODWOŁANIE)[^”"“„]){5,500}?)\s*[”"“]'
         normalize: [strip_quotes, collapse_whitespace]
         ground: fuzzy

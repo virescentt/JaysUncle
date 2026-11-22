@@ -47,7 +47,7 @@ if not exist .venv\Scripts\python.exe (
 .venv\Scripts\python.exe -m pip install --upgrade pip -q
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 if errorlevel 1 (
-    echo [X] Instalacja zaleznosci nie powiodla sie - wyslij zespolowi caly log powyzej.
+    echo [X] Instalacja zaleznosci nie powiodla sie - sprawdz komunikaty powyzej (np. polaczenie z internetem) i uruchom ponownie.
     exit /b 1
 )
 

@@ -1,58 +1,59 @@
 # Słownik powodów odwołania — czynność (lub zaniechanie) Zamawiającego zaskarżona w PIERWSZYM zarzucie.
 # id i opis muszą być zgodne 1:1 z danymi referencyjnymi UZP.
 # hint     — wskazówka dla LLM (kiedy wybrać daną kategorię)
-# keywords — wzorce regex dla ekstraktora regułowego (do uzupełnienia na podstawie danych treningowych)
+# keywords — wzorce regex dla ekstraktora regułowego (strategia `dictionary`): wygrywa wpis, którego wzorzec
+#            występuje NAJWCZEŚNIEJ w tekście pierwszego zarzutu — „zaniechania odrzucenia” zaczyna się przed
+#            „odrzucenia”, więc zaniechanie (7) wygrywa z czynnością (1); tak samo 8/3 i 10/9.
 id: czynnosc_powod
 description: Powód odwołania ustalany wyłącznie na podstawie pierwszego zarzutu.
 
 entries:
   - id: 1
     opis: Decyzja o odrzuceniu oferty
-    hint: Zamawiający ODRZUCIŁ ofertę (zwykle ofertę Odwołującego); zarzut kwestionuje czynność odrzucenia.
-    keywords: ['odrzuceni\w* oferty odwołującego', 'czynnoś\w* odrzucenia']
+    hint: 'Zamawiający ODRZUCIŁ ofertę (zwykle ofertę Odwołującego); zarzut kwestionuje czynność odrzucenia („odrzuceniu oferty Odwołującego”, „poinformował o odrzuceniu oferty”).'
+    keywords: ['odrzuceni\w*\s+(?:\w+\s+){0,2}ofert\w*', 'odrzuci\w*\s+(?:\w+\s+){0,2}ofert\w*', 'czynnoś\w*\s+odrzucenia']
   - id: 2
     opis: Ogłoszenie wyboru oferty
-    hint: Zaskarżony jest wybór najkorzystniejszej oferty (innego wykonawcy) lub ocena ofert prowadząca do wyboru.
-    keywords: ['wyb\w*r\w* (najkorzystniejszej )?oferty']
+    hint: 'Zaskarżony jest wybór najkorzystniejszej oferty (innego wykonawcy) lub ocena ofert prowadząca do wyboru („wyborze jako najkorzystniejszej oferty …”, „ogłosił wybór oferty”).'
+    keywords: ['wyb[oó]r\w*\s+(?:jako\s+)?(?:\w+\s+){0,2}ofert\w*', 'wybra\w*\s+(?:\w+\s+){0,2}ofert\w*', 'ogłosi\w*\s+wyb[oó]r', 'czynnoś\w*\s+wyboru']
   - id: 3
     opis: Decyzja o wykluczeniu wykonawcy
-    hint: Zamawiający WYKLUCZYŁ wykonawcę (zwykle Odwołującego) z postępowania.
-    keywords: ['wykluczeni\w* odwołującego']
+    hint: 'Zamawiający WYKLUCZYŁ wykonawcę (zwykle Odwołującego) z postępowania („wykluczeniu Odwołującego z postępowania”).'
+    keywords: ['wykluczeni\w*\s+(?:z\s+postępowania\s+)?(?:Odwołującego|wykonawcy|podmiotu)', 'wykluczy\w*\s+(?:z\s+postępowania\s+)?Odwołującego', 'czynnoś\w*\s+wykluczenia']
   - id: 4
     opis: Publikacja specyfikacji warunków zamówienia (SWZ)
-    hint: Zarzut dotyczy treści SWZ / ogłoszenia opublikowanych na początku postępowania (warunki udziału, kryteria, wzór umowy).
-    keywords: ['treś\w* (SWZ|specyfikacji)', 'publikac\w* (SWZ|ogłoszenia)']
+    hint: 'Zarzut dotyczy treści SWZ / ogłoszenia opublikowanych na początku postępowania (warunki udziału, kryteria, wzór umowy w SWZ), np. „treści SWZ opublikowanej …”, „ustaleniu treści Specyfikacji …”, „opublikował SWZ”.'
+    keywords: ['treś\w*\s+(?:SWZ|Specyfikacji)', 'ustaleni\w*\s+treści', 'opublikow\w*\s+(?:\w+\s+){0,2}(?:SWZ|Specyfikacj\w*)', 'postanowie\w*\s+(?:SWZ|Specyfikacji)', 'publikac\w*\s+(?:SWZ|Specyfikacji|ogłoszenia)']
   - id: 5
     opis: Modyfikacja treści SWZ
-    hint: Zaskarżona jest ZMIANA (modyfikacja) treści SWZ dokonana w toku postępowania.
-    keywords: ['modyfikac\w* (treści )?SWZ', 'zmian\w* treści SWZ']
+    hint: 'Zaskarżona jest ZMIANA (modyfikacja) treści SWZ dokonana w toku postępowania („modyfikacji treści SWZ”, „zmodyfikował treść SWZ”).'
+    keywords: ['modyfikac\w*\s+(?:treści\s+)?(?:SWZ|Specyfikacji)', 'zmodyfikow\w*', 'zmian\w*\s+treści\s+(?:SWZ|Specyfikacji)']
   - id: 6
-    # UWAGA: dane treningowe mają „Odpowiedzi i wyjaśnienia do SWZ”, a słownik organizatora
-    # (oczekiwane-json/czynnosc_powod_id_dict.md) „Odpowiedzi/wyjaśnienia do SWZ” — do potwierdzenia z UZP.
-    opis: Odpowiedzi i wyjaśnienia do SWZ
-    hint: Zaskarżone są odpowiedzi na pytania wykonawców / wyjaśnienia treści SWZ.
-    keywords: ['wyjaśnie\w* treści SWZ', 'odpowiedz\w* na pytania']
+    # zgodnie z referencją (dane treningowe po aktualizacji) i oczekiwane-json/czynnosc_powod_id_dict.md
+    opis: Odpowiedzi/wyjaśnienia do SWZ
+    hint: 'Zaskarżone są odpowiedzi na pytania wykonawców / wyjaśnienia treści SWZ („odpowiedzi na pytania”, „wyjaśnień treści SWZ”, „przekazał odpowiedzi i wyjaśnienia”).'
+    keywords: ['odpowiedzi\w*\s+(?:na\s+pytania|i\s+wyjaśnie\w*|do\s+treści)', 'wyjaśnie\w*\s+(?:do\s+)?treści\s+(?:SWZ|Specyfikacji)', 'udzieleni\w*\s+(?:odpowiedzi|wyjaśnień)']
   - id: 7
     opis: Zaniechanie odrzucenia oferty
-    hint: Zamawiający NIE odrzucił oferty innego wykonawcy, choć (zdaniem Odwołującego) powinien.
-    keywords: ['zaniechani\w* odrzucenia']
+    hint: 'Zamawiający NIE odrzucił oferty innego wykonawcy, choć (zdaniem Odwołującego) powinien („zaniechania odrzucenia oferty”, „nie odrzucił oferty”) — to NIE jest 1.'
+    keywords: ['zaniecha\w*\s+odrzucenia', 'nie\s+odrzuci\w*']
   - id: 8
     opis: Zaniechanie wykluczenia wykonawcy
-    hint: Zamawiający NIE wykluczył innego wykonawcy, choć (zdaniem Odwołującego) powinien.
-    keywords: ['zaniechani\w* wykluczenia']
+    hint: 'Zamawiający NIE wykluczył innego wykonawcy, choć (zdaniem Odwołującego) powinien („zaniechania wykluczenia”, „nie wykluczył”) — to NIE jest 3.'
+    keywords: ['zaniecha\w*\s+wykluczenia', 'nie\s+wykluczy\w*']
   - id: 9
     opis: Decyzja o unieważnieniu postępowania
-    hint: Zamawiający UNIEWAŻNIŁ postępowanie; zarzut kwestionuje unieważnienie.
-    keywords: ['unieważni\w* postępowani\w*']
+    hint: 'Zamawiający UNIEWAŻNIŁ postępowanie; zarzut kwestionuje unieważnienie („czynności unieważnienia postępowania”).'
+    keywords: ['unieważni\w*\s+(?:\w+\s+)?postępowani\w*', 'czynnoś\w*\s+unieważnienia']
   - id: 10
     opis: Zaniechanie unieważnienia postępowania
-    hint: Zamawiający NIE unieważnił postępowania, choć (zdaniem Odwołującego) powinien.
-    keywords: ['zaniechani\w* unieważnienia']
+    hint: 'Zamawiający NIE unieważnił postępowania, choć (zdaniem Odwołującego) powinien („zaniechania unieważnienia postępowania”) — to NIE jest 9.'
+    keywords: ['zaniecha\w*\s+unieważnienia', 'nie\s+unieważni\w*']
   - id: 11
     opis: Opis przedmiotu zamówienia (OPZ)
-    hint: Zarzut dotyczy opisu przedmiotu zamówienia (OPZ) — parametrów technicznych, zakresu, wymagań co do przedmiotu.
-    keywords: ['opis\w* przedmiotu zamówienia', '\bOPZ\b']
+    hint: 'Zarzut dotyczy opisu przedmiotu zamówienia (OPZ) — parametrów technicznych, zakresu, wymagań co do przedmiotu („opisaniu przedmiotu zamówienia”, „udostępnił OPZ”).'
+    keywords: ['opis\w*\s+przedmiotu\s+zamówienia', '\bOPZ\b', 'udostępni\w*\s+Opis']
   - id: 12
     opis: Projektowane postanowienia umowy
-    hint: Zarzut dotyczy projektowanych postanowień umowy (wzoru umowy) — np. kar umownych, terminów, waloryzacji, podziału ryzyk.
-    keywords: ['projektowan\w* postanowie\w* umowy', 'wz[oó]r\w* umowy', 'kar\w* umown\w*']
+    hint: 'Zarzut dotyczy projektowanych postanowień umowy (PPU, wzoru umowy) — np. kar umownych, terminów, waloryzacji, podziału ryzyk („projektowanych postanowień umowy (PPU)”).'
+    keywords: ['projektowan\w*\s+postanowie\w*\s+umowy', 'wz[oó]r\w*\s+umowy', '\bPPU\b', 'kar\w*\s+umown\w*']
