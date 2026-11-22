@@ -78,7 +78,7 @@ Sam LLM (tryb `llm`, bez reguł) na 10 sprawach (40 PDF, ten sam zbiór dla wszy
 | Model (OVHcloud AI Endpoints) | Parametry | Pkt za wielkość | F1 | Czas |
 |---|---|---|---|---|
 | Mistral-Small-3.2-24B-Instruct-2506 | 24B | 12 | 0.964 | ~40 s |
-| **Qwen3.5-9B** (`reasoning_effort: none`) | 9B | **18** | 0.931 | ~90 s |
+| **Qwen3.5-9B** (`reasoning_effort: none`) | 9B | **18** | 0.940 | ~90 s |
 | Olala-v1.0-mini-7A1B | 6,8B | 20 | 0.475 | 12,5 min („myślenia” nie da się wyłączyć) |
 
 Wniosek: w zgłoszeniu domyślnie działa tryb reguł; LLM pozostaje opcją (`EXTRACTION_MODE=hybrid|llm`), m.in. dla nowych klas dokumentów bez reguł. Odtworzenie: `EXTRACTION_MODE=hybrid python -m evaluation.run_eval --subset scans` (wymaga klucza w `.env`).

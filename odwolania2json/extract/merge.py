@@ -57,12 +57,14 @@ def locate(value, mode: str, doc: Document) -> Evidence | None:
     return None
 
 
-def _score(c: Candidate, spec: FieldSpec, doc: Document, issues: list[str]) -> float:
+def _score(c: Candidate, spec: FieldSpec, doc: Document, issues: list[str], raw=None) -> float:
     conf = c.confidence
     mode = spec.grounding
     if mode != "none":
         ev = c.evidence if c.method.startswith("rules") else None
         ev = ev or locate(c.value, mode, doc)
+        if ev is None and raw is not None and raw != c.value and not c.method.startswith("rules"):
+            ev = locate(raw, mode, doc)  # normalizer reordered the value (TED: '2026/S 086-999073' → '999073-2026')
         if ev:
             c.evidence = c.evidence or ev
             conf += BONUS_GROUNDED
@@ -100,7 +102,7 @@ def merge(
             issues += n_issues
             if c.value is None:
                 continue
-            conf = _score(c, fspec, doc, issues)
+            conf = _score(c, fspec, doc, issues, raw)
             method_rank = _rank(c.method, settings.method_priority)
             scored.append((conf, -method_rank, c, raw))
         if not scored:

@@ -34,7 +34,7 @@ Pomiar z 21.11.2026 w trybie reguł (bez LLM), metryka F1 po polach ([`evaluatio
 
 - Skany wg typu: odwołanie 0.989 · pełnomocnictwo 0.987 · potwierdzenie przelewu 0.878.
 - OCR (lokalny, bez GPU): odnalezione wartości referencji na skanach 0.83 → **0.955** po przejściu na RapidOCR PP-OCRv6 i korektach.
-- Z LLM (Qwen3.5-9B, bez „myślenia”): hybryda na tych samych 30 skanach **0.955** (LLM podnosi kompletność, ale wypełnia pola puste w referencji), sam LLM na 10 sprawach **0.931**. Dlatego wbudowane typy działają na regułach, a LLM odczytuje nowe typy dokumentów.
+- Z LLM (Qwen3.5-9B, bez „myślenia”): hybryda na tych samych 30 skanach **0.955** (LLM podnosi kompletność, ale wypełnia pola puste w referencji), sam LLM na 10 sprawach **0.940**. Dlatego wbudowane typy działają na regułach, a LLM odczytuje nowe typy dokumentów.
 - Szczegóły, lista pozostałych błędów i sposób odtworzenia: [docs/RAPORT_JAKOSCI.md](docs/RAPORT_JAKOSCI.md). Architektura: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
 
 ## Architektura w skrócie
