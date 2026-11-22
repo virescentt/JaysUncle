@@ -136,7 +136,13 @@
     <section id="tab-classes" class="view view-classes" role="tabpanel" aria-labelledby="tab-btn-classes" hidden>
       <aside class="sidebar" aria-labelledby="class-list-title">
         <div class="list-head">
-          <h2 id="class-list-title">Typy dokumentów</h2>
+          <div class="list-title">
+            <h2 id="class-list-title">Typy dokumentów</h2>
+            <span class="help">
+              <button class="help-q" type="button" aria-describedby="types-help" aria-label="Co to jest typ dokumentu?">?</button>
+              <span class="help-tip help-tip-start" id="types-help" role="tooltip">Typ dokumentu mówi systemowi, jak rozpoznać dany rodzaj pisma i jakie dane z niego odczytać.</span>
+            </span>
+          </div>
           <button class="btn small primary" id="ws-new" type="button">+ Nowy typ</button>
         </div>
         <ul id="class-list" class="class-list" aria-label="Typy dokumentów"></ul>
@@ -144,7 +150,6 @@
 
       <section class="workshop" id="workshop" aria-labelledby="ws-title">
         <div class="ws-inner">
-          <p class="ws-intro">Typ dokumentu mówi systemowi, <strong>jak rozpoznać</strong> dany rodzaj pisma i <strong>jakie dane</strong> z niego odczytać.</p>
           <header class="ws-head">
             <div class="ws-head-text">
               <h2 id="ws-title">Wybierz typ dokumentu z listy</h2>

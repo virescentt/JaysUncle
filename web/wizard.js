@@ -1,5 +1,5 @@
 // Kreator nowego typu dokumentu (3 kroki) — zakładka "Typy dokumentów".
-// 1. Nazwa  2. Jak rozpoznać (frazy, opcjonalnie z przykładowego PDF)  3. Jakie dane odczytać (pola, tryb llm).
+// 1. Nazwa  2. Jak rozpoznać (frazy, opcjonalnie z przykładowego PDF)  3. Jakie informacje odczytać (pola, tryb llm).
 // Wynik: dane klasy → /api/doc-types/dump → YAML, który przechodzi zwykłe validate / test / zapis.
 // Po zapisie nowy typ otwiera się w pełnym formularzu (wagi, wzorce, reguły).
 
@@ -14,7 +14,7 @@ const KINDS = [
   ["boolean", "Tak / nie"],
   ["array", "Lista"],
 ];
-const STEPS = ["Nazwa", "Jak rozpoznać", "Jakie dane odczytać"];
+const STEPS = ["Nazwa", "Jak rozpoznać", "Jakie informacje odczytać"];
 const W_HIGH = 4;
 const W_MID = 2;
 const MIN_SCORE = 4;
@@ -96,7 +96,7 @@ function problems(step) {
   if (step === 1 && !wz.phrases.some((p) => p.trim())) out.push("Dodaj co najmniej jedną frazę — najlepiej tytuł dokumentu.");
   if (step === 2) {
     const named = wz.fields.filter((f) => f.label.trim());
-    if (!named.length) out.push("Dodaj co najmniej jedno pole do odczytania.");
+    if (!named.length) out.push("Dodaj co najmniej jedną informację do odczytania.");
     wz.fields.forEach((f, i) => {
       if (!f.label.trim() && (f.description.trim() || wz.fields.length > 1)) out.push(`Pole nr ${i + 1}: wpisz nazwę albo usuń wiersz.`);
     });
@@ -188,7 +188,6 @@ function stepRecognise() {
       (p, i) => `<li>
         <label class="sr-only" for="wz-ph-${i}">Fraza nr ${i + 1}</label>
         <input id="wz-ph-${i}" value="${esc(p)}" data-phrase="${i}" placeholder="${i === 0 ? "np. UMOWA NAJMU" : "np. wynajmujący"}" autocomplete="off">
-        ${i === 0 ? '<span class="wz-tag">najważniejsza — zwykle tytuł</span>' : ""}
         <button type="button" class="btn small ghost" data-del-phrase="${i}" aria-label="Usuń frazę nr ${i + 1}">Usuń</button>
       </li>`,
     )
@@ -198,11 +197,12 @@ function stepRecognise() {
     <p class="wz-hint">Podaj zwroty, które zawsze pojawiają się w tym dokumencie — najlepiej jego tytuł. Najłatwiej: wgraj przykładowy plik i kliknij właściwe wiersze.</p>
     <div class="wz-sample">
       <button type="button" class="btn" data-act="sample">${wz.sample ? "Wybierz inny plik PDF…" : "Wgraj przykładowy PDF…"}</button>
-      <span class="muted small">${wz.sample ? `Plik: ${esc(wz.sample.name)}` : "Opcjonalnie — plik nie jest nigdzie zapisywany."}</span>
+      <small class="cf-help">${wz.sample ? `Plik: ${esc(wz.sample.name)}` : "Opcjonalnie — plik nie jest nigdzie zapisywany."}</small>
       <input type="file" id="wz-file" accept=".pdf,application/pdf" hidden>
     </div>
     ${lines}
     <h4>Frazy rozpoznawania</h4>
+    <p class="wz-hint wz-hint-tight">Pierwsza fraza liczy się najbardziej — wpisz tam tytuł dokumentu.</p>
     ${rows ? `<ul class="wz-phrases">${rows}</ul>` : '<p class="muted small">Nie dodano jeszcze żadnej frazy.</p>'}
     <div><button type="button" class="btn small" data-act="add-phrase">+ Wpisz frazę ręcznie</button></div>`;
 }
@@ -214,23 +214,25 @@ function stepFields() {
   const rows = wz.fields
     .map(
       (f, i) => `<li class="wz-field">
-        <div class="cf-lbl"><label for="wz-fl-${i}">Nazwa pola (po ludzku)</label>
+        <div class="cf-lbl"><label for="wz-fl-${i}">Informacja</label>
           <input id="wz-fl-${i}" value="${esc(f.label)}" data-field="${i}" data-k="label" placeholder="np. Data zawarcia umowy" autocomplete="off">
-          <small class="cf-help">${keys[i] ? `W wyniku: <code>${esc(keys[i])}</code>` : "&nbsp;"}</small></div>
+          <small class="cf-help">${keys[i] ? `W pliku JSON: <code>${esc(keys[i])}</code>` : "&nbsp;"}</small></div>
         <div class="cf-lbl"><label for="wz-fk-${i}">Rodzaj</label>
           <select id="wz-fk-${i}" data-field="${i}" data-k="kind">${KINDS.map(([v, l]) => `<option value="${v}"${v === f.kind ? " selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="cf-lbl wz-field-desc"><label for="wz-fd-${i}">Opis — jak koledze z pracy</label>
+        <div class="cf-lbl wz-field-desc"><label for="wz-fd-${i}">Opis zwykłymi słowami</label>
           <input id="wz-fd-${i}" value="${esc(f.description)}" data-field="${i}" data-k="description" placeholder="np. Dzień, w którym strony podpisały umowę." autocomplete="off"></div>
-        <button type="button" class="btn small ghost wz-del" data-del-field="${i}" aria-label="Usuń pole nr ${i + 1}" ${wz.fields.length === 1 ? "disabled" : ""}>Usuń</button>
+        <button type="button" class="btn small ghost wz-del" data-del-field="${i}" aria-label="Usuń informację nr ${i + 1}" ${wz.fields.length === 1 ? "disabled" : ""}>Usuń</button>
       </li>`,
     )
     .join("");
   return `
-    <h3 tabindex="-1">Jakie dane odczytać z dokumentu?</h3>
-    <p class="wz-hint">Dane z nowego typu odczytuje <strong>model językowy</strong> na podstawie nazw i opisów pól — dlatego opisz każde pole zwykłymi słowami. Model konfiguruje informatyk (plik <code>.env</code>).</p>
-    ${llm ? "" : '<div class="alert warn">Model językowy nie jest teraz skonfigurowany — dokument zostanie rozpoznany, ale pola pozostaną puste, dopóki informatyk go nie włączy.</div>'}
+    <h3 tabindex="-1">Jakie informacje system ma odczytać?</h3>
+    <p class="wz-hint">Wypisz informacje, które chcesz dostać z każdego takiego dokumentu — każda trafi do wyniku (pliku JSON) jako osobna pozycja.
+      Przykład dla umowy najmu: <strong>Data zawarcia</strong> (data), <strong>Wynajmujący</strong> (tekst), <strong>Kwota czynszu</strong> (kwota).</p>
+    <p class="wz-hint wz-hint-tight">Odczytuje je model językowy, dlatego w opisie napisz zwykłymi słowami, co to za informacja i gdzie jej szukać.</p>
+    ${llm ? "" : '<div class="alert warn">Model językowy nie jest teraz włączony — dokument zostanie rozpoznany, ale informacje pozostaną puste, dopóki informatyk go nie włączy.</div>'}
     <ul class="wz-fields">${rows}</ul>
-    <div><button type="button" class="btn small" data-act="add-field">+ Dodaj pole</button></div>`;
+    <div><button type="button" class="btn small" data-act="add-field">+ Dodaj informację</button></div>`;
 }
 
 function render() {

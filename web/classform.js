@@ -233,6 +233,29 @@ const nextId = (p) => `${p}-${++uidN}`;
 const hint = (text, id) => h("p", { class: "cf-hint", text, id });
 
 /** <label for> + control (+ optional hint linked through aria-describedby). */
+/** Label with a "?" that shows the explanation on hover / focus (instead of a line of text under the control). */
+function fieldQ(label, control, help, cls = "") {
+  const id = control.id || (control.id = nextId("cf"));
+  const tipId = `${id}-tip`;
+  control.setAttribute("aria-describedby", tipId);
+  return h(
+    "div",
+    { class: `cf-lbl ${cls}`.trim() },
+    h(
+      "div",
+      { class: "cf-lbl-row" },
+      h("label", { for: id, text: label }),
+      h(
+        "span",
+        { class: "help" },
+        h("button", { type: "button", class: "help-q", "aria-describedby": tipId, "aria-label": `Wyjaśnienie: ${label}` }, "?"),
+        h("span", { class: "help-tip help-tip-start", id: tipId, role: "tooltip", text: help }),
+      ),
+    ),
+    control,
+  );
+}
+
 function field(label, control, help, cls = "") {
   const id = control.id || (control.id = nextId("cf"));
   let helpEl = null;
@@ -545,7 +568,7 @@ export function renderForm(root, m, ctx) {
     "Wpisz zwroty, które zwykle występują w tym dokumencie (np. jego tytuł). Każda znaleziona fraza daje punkty — Niska 1, Średnia 2, Wysoka 4. Wielkość liter i polskie znaki zwykle nie mają znaczenia.",
     phraseList(m.signals, "pos", "Dokument zawiera…", "Typowe zwroty i słowa z tego dokumentu.", "+ Dodaj frazę"),
     phraseList(m.negative, "neg", "Wyklucz, jeśli dokument zawiera…", "Zwroty, które świadczą, że to INNY dokument — odejmują punkty.", "+ Dodaj frazę wykluczającą"),
-    field(
+    fieldQ(
       "Wymagana liczba punktów",
       num(m, "min_score", { min: "0", class: "cf-short" }),
       "Dokument zostaje rozpoznany, gdy suma punktów osiągnie tę wartość. Np. 4 = wystarczy jedna fraza o wysokiej ważności albo dwie o średniej.",

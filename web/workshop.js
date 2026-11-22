@@ -379,8 +379,8 @@ async function newClass() {
   el.msg.innerHTML = "";
   el.result.innerHTML = "";
   el.title.textContent = "Nowy typ dokumentu";
-  el.file.hidden = false;
-  el.file.textContent = "Trzy proste kroki. Szczegóły (wagi, reguły) można ustawić później.";
+  el.file.hidden = true;
+  el.file.textContent = "";
   el.dirty.hidden = true;
   openWizard(el.wizard, {
     jsonPost,
